@@ -2,8 +2,9 @@ import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import db from './models';
-import Category from './Router/Category.Router';
+import Category from './Router/category.router';
 import Brand from './Router/brand.router';
+import Packaging from './Router/Packaging.router';
 
 dotenv.config();
 
@@ -21,6 +22,8 @@ app.use(express.json());
 
 app.use('/api/categories', Category);
 app.use('/api/brands', Brand);
+app.use('/api/packagings', Packaging);
+
 
 app.get('/', (req, res) => {
   res.send('EREFTX API running...');
