@@ -1,110 +1,197 @@
 import db from "../models";
 import { Request, Response } from "express";
+import { z } from "zod";
+import { validate as isUUID } from "uuid";
 
 const { Category } = db;
 
-// =====================
-// CREATE CATEGORY
-// =====================
-export const createCategory = async (req: Request, res: Response) => {
-  try {
-    const { name } = req.body;
+/**
+ * =====================
+ * SCHEMA
+ * =====================
+ */
+const CategorySchema = z.object({
+  name: z.string().min(1, "Name is required").trim(),
+});
 
-    if (!name) {
-      return res.status(400).json({ message: "Name is required" });
+type CategoryInput = z.infer<typeof CategorySchema>;
+
+interface ParamsWithId {
+  id: string;
+}
+
+/**
+ * =====================
+ * CREATE CATEGORY
+ * =====================
+ */
+export const createCategory = async (
+  req: Request<{}, {}, CategoryInput>,
+  res: Response
+): Promise<Response> => {
+  try {
+    const parsed = CategorySchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      return res.status(400).json({
+        message: "Invalid input",
+        errors: parsed.error.flatten(),
+      });
     }
 
-    const category = await Category.create({ name });
+    const category = await Category.create(parsed.data);
 
     return res.status(201).json(category);
-  } catch (err: any) {
-    console.error("CREATE CATEGORY ERROR:", err);
+  } catch (error: unknown) {
+    console.error("CREATE CATEGORY ERROR:", error);
 
     return res.status(500).json({
-      message: err?.message || "Error creating category",
+      message: "Internal server error",
     });
   }
 };
 
-// =====================
-// GET ALL CATEGORIES
-// =====================
-export const getCategories = async (_: Request, res: Response) => {
+/**
+ * =====================
+ * GET ALL
+ * =====================
+ */
+export const getCategories = async (
+  _: Request,
+  res: Response
+): Promise<Response> => {
   try {
     const categories = await Category.findAll();
-    return res.json(categories);
-  } catch (err: any) {
-    console.error("GET CATEGORIES ERROR:", err);
+
+    return res.status(200).json(categories);
+  } catch (error: unknown) {
+    console.error("GET CATEGORIES ERROR:", error);
 
     return res.status(500).json({
-      message: err?.message || "Error fetching categories",
+      message: "Internal server error",
     });
   }
 };
 
-// =====================
-// GET BY ID
-// =====================
-export const getCategoryById = async (req: Request, res: Response) => {
+/**
+ * =====================
+ * GET BY ID
+ * =====================
+ */
+export const getCategoryById = async (
+  req: Request<ParamsWithId>,
+  res: Response
+): Promise<Response> => {
   try {
-    const category = await Category.findByPk(req.params.id);
+    const { id } = req.params;
 
-    if (!category) {
-      return res.status(404).json({ message: "Not found" });
+    if (!isUUID(id)) {
+      return res.status(400).json({
+        message: "Invalid ID format",
+      });
     }
 
-    return res.json(category);
-  } catch (err: any) {
-    console.error("GET CATEGORY BY ID ERROR:", err);
-
-    return res.status(500).json({
-      message: err?.message || "Error fetching category",
-    });
-  }
-};
-
-// =====================
-// UPDATE CATEGORY
-// =====================
-export const updateCategory = async (req: Request, res: Response) => {
-  try {
-    const category = await Category.findByPk(req.params.id);
+    const category = await Category.findByPk(id);
 
     if (!category) {
-      return res.status(404).json({ message: "Not found" });
+      return res.status(404).json({
+        message: "Category not found",
+      });
     }
 
-    await category.update(req.body);
-
-    return res.json(category);
-  } catch (err: any) {
-    console.error("UPDATE CATEGORY ERROR:", err);
+    return res.status(200).json(category);
+  } catch (error: unknown) {
+    console.error("GET CATEGORY ERROR:", error);
 
     return res.status(500).json({
-      message: err?.message || "Error updating category",
+      message: "Internal server error",
     });
   }
 };
 
-// =====================
-// DELETE CATEGORY
-// =====================
-export const deleteCategory = async (req: Request, res: Response) => {
+/**
+ * =====================
+ * UPDATE
+ * =====================
+ */
+export const updateCategory = async (
+  req: Request<ParamsWithId, {}, Partial<CategoryInput>>,
+  res: Response
+): Promise<Response> => {
   try {
-    const category = await Category.findByPk(req.params.id);
+    const { id } = req.params;
+
+    if (!isUUID(id)) {
+      return res.status(400).json({
+        message: "Invalid ID format",
+      });
+    }
+
+    const parsed = CategorySchema.partial().safeParse(req.body);
+
+    if (!parsed.success) {
+      return res.status(400).json({
+        message: "Invalid input",
+        errors: parsed.error.flatten(),
+      });
+    }
+
+    const category = await Category.findByPk(id);
 
     if (!category) {
-      return res.status(404).json({ message: "Not found" });
+      return res.status(404).json({
+        message: "Category not found",
+      });
+    }
+
+    await category.update(parsed.data);
+
+    return res.status(200).json(category);
+  } catch (error: unknown) {
+    console.error("UPDATE CATEGORY ERROR:", error);
+
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
+};
+
+/**
+ * =====================
+ * DELETE
+ * =====================
+ */
+export const deleteCategory = async (
+  req: Request<ParamsWithId>,
+  res: Response
+): Promise<Response> => {
+  try {
+    const { id } = req.params;
+
+    if (!isUUID(id)) {
+      return res.status(400).json({
+        message: "Invalid ID format",
+      });
+    }
+
+    const category = await Category.findByPk(id);
+
+    if (!category) {
+      return res.status(404).json({
+        message: "Category not found",
+      });
     }
 
     await category.destroy();
 
-    return res.json({ message: "Deleted" });
-  } catch (err: any) {
-    console.error("DELETE CATEGORY ERROR:", err);
+    return res.status(200).json({
+      message: "Deleted successfully",
+    });
+  } catch (error: unknown) {
+    console.error("DELETE CATEGORY ERROR:", error);
 
     return res.status(500).json({
-      message: err?.message || "Error deleting category",
+      message: "Internal server error",
     });
   }
 };

@@ -3,39 +3,74 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-// =====================
-// SEQUELIZE CONNECTION
-// =====================
-const sequelize = new Sequelize(
-  process.env.DB_NAME!,
-  process.env.DB_USER!,
-  process.env.DB_PASS || "",
+/**
+ * =====================
+ * SEQUELIZE CONNECTION
+ * =====================
+ */
+export const sequelize = new Sequelize(
+  process.env.DB_NAME as string,
+  process.env.DB_USER as string,
+  (process.env.DB_PASS as string) || "",
   {
-    host: process.env.DB_HOST!,
+    host: process.env.DB_HOST as string,
     dialect: "mysql",
     logging: false,
   }
 );
 
-// =====================
-// DB OBJECT
-// =====================
-const db: any = {};
+/**
+ * =====================
+ * IMPORT MODELS (SAFE IMPORTS)
+ * =====================
+ */
+import initProduct from "./Product";
+import initStock from "./Stock";
+import initSale from "./Sale";
+import initSaleItem from "./SaleItems";
+import initBrand from "./Brand";
+import initCategory from "./Category";
+import initPackaging from "./Packaging";
 
-// =====================
-// INIT MODELS (FIXED NAMING)
-// =====================
-db.Product = require("./Product").default(sequelize);
-db.Stock = require("./Stock").default(sequelize);
-db.Sale = require("./Sale").default(sequelize);
-db.SaleItem = require("./SaleItems").default(sequelize);
-db.Brand = require("./Brand").default(sequelize);
-db.Category = require("./Category").default(sequelize);
-db.Packaging = require("./Packaging").default(sequelize);
+/**
+ * =====================
+ * MODEL TYPES (STRICT DB SHAPE)
+ * =====================
+ */
+export interface DB {
+  sequelize: Sequelize;
 
-// =====================
-// RELATIONSHIPS
-// =====================
+  Product: ReturnType<typeof initProduct>;
+  Stock: ReturnType<typeof initStock>;
+  Sale: ReturnType<typeof initSale>;
+  SaleItem: ReturnType<typeof initSaleItem>;
+  Brand: ReturnType<typeof initBrand>;
+  Category: ReturnType<typeof initCategory>;
+  Packaging: ReturnType<typeof initPackaging>;
+}
+
+/**
+ * =====================
+ * INIT DB
+ * =====================
+ */
+const db: DB = {
+  sequelize,
+
+  Product: initProduct(sequelize),
+  Stock: initStock(sequelize),
+  Sale: initSale(sequelize),
+  SaleItem: initSaleItem(sequelize),
+  Brand: initBrand(sequelize),
+  Category: initCategory(sequelize),
+  Packaging: initPackaging(sequelize),
+};
+
+/**
+ * =====================
+ * RELATIONSHIPS
+ * =====================
+ */
 
 // Product → Stock (1:1)
 db.Product.hasOne(db.Stock, {
@@ -73,7 +108,4 @@ db.SaleItem.belongsTo(db.Sale, {
 // =====================
 // EXPORT
 // =====================
-db.sequelize = sequelize;
-db.Sequelize = Sequelize;
-
 export default db;

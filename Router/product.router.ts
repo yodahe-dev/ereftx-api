@@ -1,16 +1,15 @@
 import { Router, Request, Response, NextFunction } from "express";
-
 import {
-  createCategory,
-  getCategories,
-  getCategoryById,
-  updateCategory,
-  deleteCategory,
-} from "../controllers/category.controllers";
+  createProduct,
+  getProducts,
+  getProductById,
+  updateProduct,
+  deleteProduct,
+} from "../controllers/product.controllers";
 
 /**
  * =====================
- * GENERIC ASYNC HANDLER
+ * GENERIC ASYNC WRAPPER
  * =====================
  */
 type AsyncHandler<P = any, B = any> = (
@@ -19,11 +18,6 @@ type AsyncHandler<P = any, B = any> = (
   next: NextFunction
 ) => Promise<Response | void>;
 
-/**
- * =====================
- * WRAPPER (TYPE SAFE)
- * =====================
- */
 const wrap =
   <P = any, B = any>(fn: AsyncHandler<P, B>) =>
   (req: Request<P, any, B>, res: Response, next: NextFunction) => {
@@ -39,18 +33,18 @@ const router = Router();
  */
 
 // CREATE
-router.post("/", wrap(createCategory));
+router.post("/", wrap(createProduct));
 
 // GET ALL
-router.get("/", wrap(getCategories));
+router.get("/", wrap(getProducts));
 
-// GET BY ID (STRICT PARAM)
-router.get("/:id", wrap(getCategoryById));
+// GET BY ID
+router.get("/:id", wrap(getProductById));
 
 // UPDATE
-router.put("/:id", wrap(updateCategory));
+router.put("/:id", wrap(updateProduct));
 
 // DELETE
-router.delete("/:id", wrap(deleteCategory));
+router.delete("/:id", wrap(deleteProduct));
 
 export default router;
