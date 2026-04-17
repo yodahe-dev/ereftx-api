@@ -5,12 +5,6 @@ import { validate as isUUID } from "uuid";
 
 const { Product } = db;
 
-/**
- * =====================
- * SCHEMA
- * =====================
- */
-
 const ProductSchema = z.object({
   name: z.string().min(1).max(150),
 

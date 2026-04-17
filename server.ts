@@ -34,7 +34,7 @@ app.use(express.json());
  */
 app.use("/api/categories", CategoryRouter);
 app.use("/api/brands", BrandRouter);
-app.use("/api/packagings", PackagingRouter);
+app.use("", PackagingRouter);
 app.use("/api/products", ProductRouter);
 
 app.get("/", (_req: Request, res: Response) => {

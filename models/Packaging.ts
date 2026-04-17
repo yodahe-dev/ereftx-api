@@ -2,23 +2,12 @@ import { DataTypes, Model, Sequelize, Optional } from "sequelize";
 
 /**
  * =====================
- * ENUM (STRICT)
- * =====================
- */
-export enum PackagingType {
-  BOTTLE = "bottle",
-  CAN = "can",
-  PLASTIC = "plastic",
-}
-
-/**
- * =====================
  * TYPES
  * =====================
  */
 interface PackagingAttributes {
   id: string;
-  type: PackagingType;
+  type: string; // ✅ changed from enum to string
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -39,7 +28,7 @@ export default (sequelize: Sequelize) => {
     implements PackagingAttributes
   {
     public id!: string;
-    public type!: PackagingType;
+    public type!: string;
 
     public readonly createdAt!: Date;
     public readonly updatedAt!: Date;
@@ -54,14 +43,17 @@ export default (sequelize: Sequelize) => {
       },
 
       type: {
-        type: DataTypes.ENUM(...Object.values(PackagingType)),
+        type: DataTypes.STRING, // ✅ flexible now
         allowNull: false,
         unique: true,
 
         validate: {
-          isIn: {
-            args: [Object.values(PackagingType)],
-            msg: "Invalid packaging type",
+          notEmpty: {
+            msg: "Packaging type cannot be empty",
+          },
+          len: {
+            args: [1, 50],
+            msg: "Packaging type too long",
           },
         },
       },
