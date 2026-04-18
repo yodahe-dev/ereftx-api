@@ -2,10 +2,9 @@ import express, { Request, Response, NextFunction } from "express";
 import dotenv from "dotenv";
 import cors from "cors";
 import db from "./models";
-
+import PackagingRouter from "./Router/packaging.router";
 import CategoryRouter from "./Router/category.router";
 import BrandRouter from "./Router/brand.router";
-import PackagingRouter from "./Router/packaging.router";
 import ProductRouter from "./Router/product.router";
 
 dotenv.config();
@@ -34,37 +33,15 @@ app.use(express.json());
  */
 app.use("/api/categories", CategoryRouter);
 app.use("/api/brands", BrandRouter);
-app.use("", PackagingRouter);
+app.use("/api/packagings", PackagingRouter);
 app.use("/api/products", ProductRouter);
 
+/**
+ * HEALTH CHECK
+ */
 app.get("/", (_req: Request, res: Response) => {
   res.status(200).send("EREFTX API running...");
 });
-
-/**
- * =====================
- * 404 HANDLER
- * =====================
- */
-app.use((_req: Request, res: Response) => {
-  res.status(404).json({
-    message: "Route not found",
-  });
-});
-
-/**
- * =====================
- * GLOBAL ERROR HANDLER
- * =====================
- */
-app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
-  console.error("GLOBAL ERROR:", err);
-
-  return res.status(500).json({
-    message: "Internal server error",
-  });
-});
-
 /**
  * =====================
  * START SERVER
@@ -76,7 +53,7 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     console.log("DB connected");
 
     await db.sequelize.sync({
-      alter: false, // keep production safe
+      alter: false,
     });
 
     app.listen(PORT, "0.0.0.0", () => {

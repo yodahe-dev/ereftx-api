@@ -44,6 +44,10 @@ router.get("/:id", wrap(getProductById));
 // UPDATE
 router.put("/:id", wrap(updateProduct));
 
+router.get("/test", (req, res) => {
+  res.json({ ok: true });
+});
+
 // DELETE
 router.delete("/:id", wrap(deleteProduct));
 
