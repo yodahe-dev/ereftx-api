@@ -38,6 +38,7 @@ import initPackaging from "./Packaging";
  * =====================
  */
 export interface DB {
+  [x: string]: any;
   sequelize: Sequelize;
 
   Product: ReturnType<typeof initProduct>;

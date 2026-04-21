@@ -6,6 +6,7 @@ import PackagingRouter from "./Router/packaging.router";
 import CategoryRouter from "./Router/category.router";
 import BrandRouter from "./Router/brand.router";
 import ProductRouter from "./Router/product.router";
+import stcokRouter from "./Router/stock.router";
 
 dotenv.config();
 
@@ -35,6 +36,7 @@ app.use("/api/categories", CategoryRouter);
 app.use("/api/brands", BrandRouter);
 app.use("/api/packagings", PackagingRouter);
 app.use("/api/products", ProductRouter);
+app.use("/api/stocks", stcokRouter);
 
 /**
  * HEALTH CHECK

@@ -112,10 +112,36 @@ export const createProduct = async (req: Request, res: Response) => {
  * GET ALL
  * =====================
  */
-export const getProducts = async (_: Request, res: Response) => {
+
+export const getProducts = async (req: Request, res: Response) => {
   try {
-    const products = await Product.findAll();
-    return res.status(200).json(products);
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 20;
+    const search = String(req.query.search || "").toLowerCase();
+
+    const offset = (page - 1) * limit;
+
+    const where: any = {};
+
+    if (search) {
+      where.name = {
+        [db.Sequelize.Op.like]: `%${search}%`,
+      };
+    }
+
+    const { rows, count } = await Product.findAndCountAll({
+      where,
+      limit,
+      offset,
+      order: [["createdAt", "DESC"]],
+    });
+
+    return res.status(200).json({
+      data: rows,
+      page,
+      hasMore: offset + rows.length < count,
+      total: count,
+    });
   } catch (error) {
     console.error("GET PRODUCTS ERROR:", error);
     return res.status(500).json({ message: "Internal server error" });

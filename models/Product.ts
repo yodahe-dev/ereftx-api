@@ -1,10 +1,5 @@
 import { DataTypes, Model, Sequelize, Optional } from "sequelize";
 
-/**
- * =====================
- * TYPES
- * =====================
- */
 interface ProductAttributes {
   id: string;
   name: string;
@@ -27,7 +22,11 @@ interface ProductAttributes {
   priceStartDate: Date;
   priceEndDate?: Date | null;
 
+  allowLoss: boolean; // ✅ NEW
+
   readonly singleBuyingPrice?: number;
+  readonly profitPerBox?: number;
+  readonly profitPerBottle?: number;
 
   createdAt?: Date;
   updatedAt?: Date;
@@ -42,13 +41,11 @@ type ProductCreationAttributes = Optional<
   | "description"
   | "priceEndDate"
   | "singleBuyingPrice"
+  | "profitPerBox"
+  | "profitPerBottle"
+  | "allowLoss"
 >;
 
-/**
- * =====================
- * MODEL
- * =====================
- */
 export default (sequelize: Sequelize) => {
   class Product
     extends Model<ProductAttributes, ProductCreationAttributes>
@@ -75,7 +72,11 @@ export default (sequelize: Sequelize) => {
     public priceStartDate!: Date;
     public priceEndDate!: Date | null;
 
+    public allowLoss!: boolean;
+
     public readonly singleBuyingPrice!: number;
+    public readonly profitPerBox!: number;
+    public readonly profitPerBottle!: number;
 
     public readonly createdAt!: Date;
     public readonly updatedAt!: Date;
@@ -92,13 +93,6 @@ export default (sequelize: Sequelize) => {
       name: {
         type: DataTypes.STRING(150),
         allowNull: false,
-        validate: {
-          notEmpty: { msg: "Name is required" },
-          len: {
-            args: [1, 150],
-            msg: "Name must be between 1 and 150 chars",
-          },
-        },
         set(value: string) {
           this.setDataValue("name", value.trim());
         },
@@ -117,7 +111,6 @@ export default (sequelize: Sequelize) => {
 
       isActive: {
         type: DataTypes.BOOLEAN,
-        allowNull: false,
         defaultValue: true,
       },
 
@@ -138,15 +131,12 @@ export default (sequelize: Sequelize) => {
 
       bottlesPerBox: {
         type: DataTypes.INTEGER,
-        allowNull: false,
         defaultValue: 24,
-        validate: { min: 1 },
       },
 
       boxBuyPrice: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
-        validate: { min: 0 },
         get() {
           return Number(this.getDataValue("boxBuyPrice"));
         },
@@ -155,7 +145,6 @@ export default (sequelize: Sequelize) => {
       boxSellPrice: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
-        validate: { min: 0 },
         get() {
           return Number(this.getDataValue("boxSellPrice"));
         },
@@ -164,7 +153,6 @@ export default (sequelize: Sequelize) => {
       singleSellPrice: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
-        validate: { min: 0 },
         get() {
           return Number(this.getDataValue("singleSellPrice"));
         },
@@ -172,25 +160,46 @@ export default (sequelize: Sequelize) => {
 
       priceStartDate: {
         type: DataTypes.DATE,
-        allowNull: false,
         defaultValue: DataTypes.NOW,
       },
 
       priceEndDate: {
         type: DataTypes.DATE,
         allowNull: true,
-        defaultValue: null,
       },
 
+      // ✅ NEW
+      allowLoss: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+      },
+
+      // ✅ computed
       singleBuyingPrice: {
         type: DataTypes.VIRTUAL,
         get() {
           const boxBuy = Number(this.getDataValue("boxBuyPrice"));
-          const bottles = this.getDataValue("bottlesPerBox");
-
-          if (!bottles) return 0;
-
+          const bottles = this.getDataValue("bottlesPerBox") || 1;
           return boxBuy / bottles;
+        },
+      },
+
+      profitPerBox: {
+        type: DataTypes.VIRTUAL,
+        get() {
+          return (
+            Number(this.getDataValue("boxSellPrice")) -
+            Number(this.getDataValue("boxBuyPrice"))
+          );
+        },
+      },
+
+      profitPerBottle: {
+        type: DataTypes.VIRTUAL,
+        get() {
+          const singleSell = Number(this.getDataValue("singleSellPrice"));
+          const buy = this.getDataValue("singleBuyingPrice") || 0;
+          return singleSell - buy;
         },
       },
     },
@@ -199,27 +208,22 @@ export default (sequelize: Sequelize) => {
       tableName: "products",
       timestamps: true,
 
-      indexes: [
-        { unique: true, fields: ["name", "brandId", "packagingId"] },
-        { fields: ["categoryId"] },
-        { fields: ["brandId"] },
-        { fields: ["packagingId"] },
-        { fields: ["sku"] },
-        { fields: ["isActive"] },
-      ],
-
       validate: {
-        validPricing() {
-          if (Number(this.boxSellPrice) < Number(this.boxBuyPrice)) {
-            throw new Error("Box sell price must be >= buy price");
-          }
+        pricingGuard() {
+          const boxBuy = Number(this.boxBuyPrice);
+          const boxSell = Number(this.boxSellPrice);
+          const singleSell = Number(this.singleSellPrice);
+          const bottles = Number(this.bottlesPerBox || 1);
 
-          const perBottleBuy =
-            Number(this.boxBuyPrice) / Number(this.bottlesPerBox);
+          const singleBuy = boxBuy / bottles;
 
-          if (Number(this.singleSellPrice) < perBottleBuy) {
+          const isLoss =
+            boxSell < boxBuy || singleSell < singleBuy;
+
+          // ✅ only block if allowLoss = false
+          if (isLoss && !this.allowLoss) {
             throw new Error(
-              "Single sell price must not be lower than buying price per bottle"
+              "Selling below cost is not allowed unless allowLoss = true"
             );
           }
         },
