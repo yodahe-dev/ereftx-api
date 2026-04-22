@@ -2,78 +2,48 @@ import db from "../models";
 import { Request, Response } from "express";
 import { z } from "zod";
 import { validate as isUUID } from "uuid";
-import { Transaction } from "sequelize";
+import { Transaction, Op } from "sequelize";
 
-const { Product, sequelize } = db;
+const { Product, ProductPrice, sequelize } = db;
 
 /**
  * =====================
  * VALIDATION
  * =====================
  */
+
 const ProductSchema = z.object({
-  name: z.string().min(1).max(150),
-
-  sku: z.string().max(100).optional().nullable(),
-  description: z.string().optional().nullable(),
-
-  isActive: z.boolean().optional().default(true),
+  name: z.string().min(1).max(120),
 
   categoryId: z.string().uuid(),
   brandId: z.string().uuid(),
   packagingId: z.string().uuid(),
 
-  bottlesPerBox: z.number().int().min(1).optional().default(24),
+  unitsPerBox: z.number().int().min(1).default(24),
 
-  boxBuyPrice: z.number().nonnegative(),
-  boxSellPrice: z.number().nonnegative(),
-  singleSellPrice: z.number().nonnegative(),
-
-  priceStartDate: z.coerce.date().optional(),
-  priceEndDate: z.coerce.date().nullable().optional(),
+  buyPricePerBox: z.number().nonnegative().optional(),
+  sellPricePerBox: z.number().nonnegative().optional(),
+  sellPricePerUnit: z.number().nonnegative().optional(),
 });
 
 const UpdateProductSchema = ProductSchema.partial();
 
 /**
  * =====================
- * HELPER: Increment SKU version
+ * CREATE PRODUCT
  * =====================
  */
-const incrementSkuVersion = (sku: string): string => {
-  const versionMatch = sku.match(/-v(\d+)$/);
-  if (versionMatch) {
-    const currentVersion = parseInt(versionMatch[1], 10);
-    return sku.replace(/-v\d+$/, `-v${currentVersion + 1}`);
-  }
-  return `${sku}-v1`;
-};
+export const createProduct = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
+  const transaction: Transaction = await sequelize.transaction();
 
-/**
- * =====================
- * HELPER: Append version to name
- * =====================
- */
-const appendNameVersion = (name: string): string => {
-  // Match existing version suffix like " (v1)" at the end
-  const versionMatch = name.match(/\s*\(v(\d+)\)$/);
-  if (versionMatch) {
-    const currentVersion = parseInt(versionMatch[1], 10);
-    return name.replace(/\s*\(v\d+\)$/, ` (v${currentVersion + 1})`);
-  }
-  return `${name} (v1)`;
-};
-
-/**
- * =====================
- * CREATE
- * =====================
- */
-export const createProduct = async (req: Request, res: Response) => {
   try {
     const parsed = ProductSchema.safeParse(req.body);
 
     if (!parsed.success) {
+      await transaction.rollback();
       return res.status(400).json({
         message: "Invalid input",
         errors: parsed.error.flatten(),
@@ -82,25 +52,42 @@ export const createProduct = async (req: Request, res: Response) => {
 
     const data = parsed.data;
 
-    const product = await Product.create({
-      name: data.name,
-      sku: data.sku ?? null,
-      description: data.description ?? null,
-      isActive: data.isActive ?? true,
-      categoryId: data.categoryId,
-      brandId: data.brandId,
-      packagingId: data.packagingId,
-      bottlesPerBox: data.bottlesPerBox ?? 24,
-      boxBuyPrice: data.boxBuyPrice,
-      boxSellPrice: data.boxSellPrice,
-      singleSellPrice: data.singleSellPrice,
-      priceStartDate: data.priceStartDate ?? new Date(),
-      priceEndDate: data.priceEndDate ?? null,
-    });
+    const product = await Product.create(
+      {
+        name: data.name,
+        categoryId: data.categoryId,
+        brandId: data.brandId,
+        packagingId: data.packagingId,
+        unitsPerBox: data.unitsPerBox ?? 24,
+      },
+      { transaction }
+    );
+
+    if (
+      data.buyPricePerBox !== undefined &&
+      data.sellPricePerBox !== undefined &&
+      data.sellPricePerUnit !== undefined
+    ) {
+      await ProductPrice.create(
+        {
+          productId: product.id,
+          buyPricePerBox: data.buyPricePerBox,
+          sellPricePerBox: data.sellPricePerBox,
+          sellPricePerUnit: data.sellPricePerUnit,
+          startAt: new Date(),
+          allowLoss: false,
+        },
+        { transaction }
+      );
+    }
+
+    await transaction.commit();
 
     return res.status(201).json(product);
   } catch (error: unknown) {
+    await transaction.rollback();
     console.error("CREATE PRODUCT ERROR:", error);
+
     return res.status(500).json({
       message: "Internal server error",
     });
@@ -109,23 +96,25 @@ export const createProduct = async (req: Request, res: Response) => {
 
 /**
  * =====================
- * GET ALL
+ * GET ALL PRODUCTS
  * =====================
  */
-
-export const getProducts = async (req: Request, res: Response) => {
+export const getProducts = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
   try {
-    const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 20;
-    const search = String(req.query.search || "").toLowerCase();
+    const page = Number(req.query.page ?? 1);
+    const limit = Number(req.query.limit ?? 20);
+    const search = String(req.query.search ?? "").trim();
 
     const offset = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Record<string, unknown> = {};
 
     if (search) {
       where.name = {
-        [db.Sequelize.Op.like]: `%${search}%`,
+        [Op.like]: `%${search}%`,
       };
     }
 
@@ -134,6 +123,15 @@ export const getProducts = async (req: Request, res: Response) => {
       limit,
       offset,
       order: [["createdAt", "DESC"]],
+      include: [
+        {
+          model: ProductPrice,
+          as: "prices",
+          required: false,
+          limit: 1,
+          order: [["createdAt", "DESC"]],
+        },
+      ],
     });
 
     return res.status(200).json({
@@ -142,7 +140,7 @@ export const getProducts = async (req: Request, res: Response) => {
       hasMore: offset + rows.length < count,
       total: count,
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("GET PRODUCTS ERROR:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
@@ -156,43 +154,46 @@ export const getProducts = async (req: Request, res: Response) => {
 export const getProductById = async (
   req: Request<{ id: string }>,
   res: Response
-) => {
+): Promise<Response> => {
   try {
     const { id } = req.params;
 
     if (!isUUID(id)) {
-      return res.status(400).json({ message: "Invalid ID format" });
+      return res.status(400).json({ message: "Invalid ID" });
     }
 
-    const product = await Product.findByPk(id);
+    const product = await Product.findByPk(id, {
+      include: [{ model: ProductPrice, as: "prices" }],
+    });
 
     if (!product) {
       return res.status(404).json({ message: "Not found" });
     }
 
     return res.status(200).json(product);
-  } catch (error) {
-    console.error("GET PRODUCT BY ID ERROR:", error);
+  } catch (error: unknown) {
+    console.error("GET PRODUCT ERROR:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
 };
 
 /**
  * =====================
- * UPDATE (with automatic versioning)
+ * UPDATE PRODUCT
  * =====================
  */
 export const updateProduct = async (
   req: Request<{ id: string }>,
   res: Response
-) => {
-  const transaction = await sequelize.transaction();
+): Promise<Response> => {
+  const transaction: Transaction = await sequelize.transaction();
+
   try {
     const { id } = req.params;
 
     if (!isUUID(id)) {
       await transaction.rollback();
-      return res.status(400).json({ message: "Invalid ID format" });
+      return res.status(400).json({ message: "Invalid ID" });
     }
 
     const parsed = UpdateProductSchema.safeParse(req.body);
@@ -205,79 +206,30 @@ export const updateProduct = async (
       });
     }
 
-    const existingProduct = await Product.findByPk(id, { transaction });
+    const product = await Product.findByPk(id, { transaction });
 
-    if (!existingProduct) {
+    if (!product) {
       await transaction.rollback();
-      return res.status(404).json({ message: "Product not found" });
+      return res.status(404).json({ message: "Not found" });
     }
 
     const data = parsed.data;
 
-    // If priceEndDate is being set and is not null → create a new version
-    if (data.priceEndDate !== undefined && data.priceEndDate !== null) {
-      // 1. Deactivate the current product
-      await existingProduct.update(
-        {
-          isActive: false,
-          priceEndDate: data.priceEndDate,
-        },
-        { transaction }
-      );
-
-      // 2. Create a new version with versioned name and SKU
-      const newName = appendNameVersion(data.name ?? existingProduct.name);
-      const newSku = data.sku
-        ? incrementSkuVersion(data.sku)
-        : incrementSkuVersion(existingProduct.sku || "SKU-001");
-
-      const newProductData = {
-        name: newName,
-        sku: newSku,
-        description: data.description ?? existingProduct.description,
-        isActive: true,
-        categoryId: data.categoryId ?? existingProduct.categoryId,
-        brandId: data.brandId ?? existingProduct.brandId,
-        packagingId: data.packagingId ?? existingProduct.packagingId,
-        bottlesPerBox: data.bottlesPerBox ?? existingProduct.bottlesPerBox,
-        boxBuyPrice: data.boxBuyPrice ?? existingProduct.boxBuyPrice,
-        boxSellPrice: data.boxSellPrice ?? existingProduct.boxSellPrice,
-        singleSellPrice: data.singleSellPrice ?? existingProduct.singleSellPrice,
-        priceStartDate: new Date(),
-        priceEndDate: null,
-      };
-
-      const newProduct = await Product.create(newProductData, { transaction });
-
-      await transaction.commit();
-      return res.status(200).json({
-        message: "Product updated – new version created",
-        original: existingProduct,
-        new: newProduct,
-      });
-    }
-
-    // Normal update without versioning
-    const updatePayload: any = {};
-    if (data.name !== undefined) updatePayload.name = data.name;
-    if (data.sku !== undefined) updatePayload.sku = data.sku;
-    if (data.description !== undefined) updatePayload.description = data.description;
-    if (data.isActive !== undefined) updatePayload.isActive = data.isActive;
-    if (data.categoryId !== undefined) updatePayload.categoryId = data.categoryId;
-    if (data.brandId !== undefined) updatePayload.brandId = data.brandId;
-    if (data.packagingId !== undefined) updatePayload.packagingId = data.packagingId;
-    if (data.bottlesPerBox !== undefined) updatePayload.bottlesPerBox = data.bottlesPerBox;
-    if (data.boxBuyPrice !== undefined) updatePayload.boxBuyPrice = data.boxBuyPrice;
-    if (data.boxSellPrice !== undefined) updatePayload.boxSellPrice = data.boxSellPrice;
-    if (data.singleSellPrice !== undefined) updatePayload.singleSellPrice = data.singleSellPrice;
-    if (data.priceStartDate !== undefined) updatePayload.priceStartDate = data.priceStartDate;
-    if (data.priceEndDate !== undefined) updatePayload.priceEndDate = data.priceEndDate;
-
-    await existingProduct.update(updatePayload, { transaction });
+    await product.update(
+      {
+        name: data.name ?? product.name,
+        categoryId: data.categoryId ?? product.categoryId,
+        brandId: data.brandId ?? product.brandId,
+        packagingId: data.packagingId ?? product.packagingId,
+        unitsPerBox: data.unitsPerBox ?? product.unitsPerBox,
+      },
+      { transaction }
+    );
 
     await transaction.commit();
-    return res.status(200).json(existingProduct);
-  } catch (error) {
+
+    return res.status(200).json(product);
+  } catch (error: unknown) {
     await transaction.rollback();
     console.error("UPDATE PRODUCT ERROR:", error);
     return res.status(500).json({ message: "Internal server error" });
@@ -286,18 +238,91 @@ export const updateProduct = async (
 
 /**
  * =====================
- * DELETE
+ * ADD PRICE VERSION
+ * =====================
+ */
+export const addProductPrice = async (
+  req: Request<{ id: string }>,
+  res: Response
+): Promise<Response> => {
+  const transaction: Transaction = await sequelize.transaction();
+
+  try {
+    const { id } = req.params;
+
+    if (!isUUID(id)) {
+      await transaction.rollback();
+      return res.status(400).json({ message: "Invalid ID" });
+    }
+
+    const schema = z.object({
+      buyPricePerBox: z.number().nonnegative(),
+      sellPricePerBox: z.number().nonnegative(),
+      sellPricePerUnit: z.number().nonnegative(),
+      allowLoss: z.boolean().optional(),
+    });
+
+    const parsed = schema.safeParse(req.body);
+
+    if (!parsed.success) {
+      await transaction.rollback();
+      return res.status(400).json(parsed.error.flatten());
+    }
+
+    const product = await Product.findByPk(id, { transaction });
+
+    if (!product) {
+      await transaction.rollback();
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    await ProductPrice.update(
+      { endAt: new Date() },
+      {
+        where: {
+          productId: id,
+          endAt: null,
+        },
+        transaction,
+      }
+    );
+
+    const price = await ProductPrice.create(
+      {
+        productId: id,
+        buyPricePerBox: parsed.data.buyPricePerBox,
+        sellPricePerBox: parsed.data.sellPricePerBox,
+        sellPricePerUnit: parsed.data.sellPricePerUnit,
+        startAt: new Date(),
+        allowLoss: parsed.data.allowLoss ?? false,
+      },
+      { transaction }
+    );
+
+    await transaction.commit();
+
+    return res.status(201).json(price);
+  } catch (error: unknown) {
+    await transaction.rollback();
+    console.error("ADD PRICE ERROR:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+/**
+ * =====================
+ * DELETE PRODUCT
  * =====================
  */
 export const deleteProduct = async (
   req: Request<{ id: string }>,
   res: Response
-) => {
+): Promise<Response> => {
   try {
     const { id } = req.params;
 
     if (!isUUID(id)) {
-      return res.status(400).json({ message: "Invalid ID format" });
+      return res.status(400).json({ message: "Invalid ID" });
     }
 
     const product = await Product.findByPk(id);
@@ -308,8 +333,8 @@ export const deleteProduct = async (
 
     await product.destroy();
 
-    return res.status(200).json({ message: "Deleted successfully" });
-  } catch (error) {
+    return res.status(200).json({ message: "Deleted" });
+  } catch (error: unknown) {
     console.error("DELETE PRODUCT ERROR:", error);
     return res.status(500).json({ message: "Internal server error" });
   }

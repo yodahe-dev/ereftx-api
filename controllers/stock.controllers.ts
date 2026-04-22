@@ -1,11 +1,11 @@
-// controllers/stockController.ts
 import db from "../models";
 import { Request, Response } from "express";
 import { validate as isUUID } from "uuid";
 import { Transaction } from "sequelize";
 import { ContainerType } from "../models/Stock";
+import { HistoryActionType } from "../models/StockHistory";
 
-const { Stock, Product, Exchange, sequelize } = db;
+const { Stock, Product, Exchange, StockHistory, sequelize } = db;
 
 const DEFAULT_CONTAINER_TYPE: ContainerType = ContainerType.BOX;
 
@@ -15,37 +15,110 @@ const getId = (id: string | string[] | undefined): string | null => {
   return id;
 };
 
-// Helper: Normalize stock (convert singles to boxes)
-const normalizeStock = (stock: any, product: any) => {
-  const bottlesPerBox = product.bottlesPerBox;
-  const totalSingles = stock.boxQuantity * bottlesPerBox + stock.singleQuantity;
-  const newBoxes = Math.floor(totalSingles / bottlesPerBox);
-  const newSingles = totalSingles % bottlesPerBox;
-  return { boxQuantity: newBoxes, singleQuantity: newSingles };
+// ----------------------------------------------------------------------
+// Helper: record stock history (used only for INITIAL and RESTOCK now)
+// ----------------------------------------------------------------------
+interface RecordHistoryOptions {
+  productId: string;
+  actionType: HistoryActionType;
+  beforeBox: number;
+  beforeSingle: number;
+  afterBox: number;
+  afterSingle: number;
+  notes?: string;
+  isFree?: boolean;
+  transaction?: Transaction;
+}
+
+const recordStockHistory = async ({
+  productId,
+  actionType,
+  beforeBox,
+  beforeSingle,
+  afterBox,
+  afterSingle,
+  notes,
+  isFree = false,
+  transaction,
+}: RecordHistoryOptions) => {
+  await StockHistory.create(
+    {
+      productId,
+      actionType,
+      boxQuantityBefore: beforeBox,
+      singleQuantityBefore: beforeSingle,
+      boxQuantityAfter: afterBox,
+      singleQuantityAfter: afterSingle,
+      boxQuantityChange: afterBox - beforeBox,
+      singleQuantityChange: afterSingle - beforeSingle,
+      notes: notes || null,
+      isFree,
+    },
+    { transaction }
+  );
 };
 
-// CREATE STOCK
-export const createStock = async (req: Request, res: Response): Promise<Response> => {
+// ----------------------------------------------------------------------
+// Create initial stock (INITIAL action) – history recorded
+// ----------------------------------------------------------------------
+export const createStock = async (req: Request, res: Response) => {
+  const transaction = await sequelize.transaction();
   try {
     const { productId, boxQuantity, singleQuantity, containerType } = req.body;
-    if (!productId || !isUUID(productId)) return res.status(400).json({ message: "Invalid productId" });
-    if (typeof boxQuantity !== "number" || boxQuantity < 0) return res.status(400).json({ message: "Invalid boxQuantity" });
-    if (typeof singleQuantity !== "number" || singleQuantity < 0) return res.status(400).json({ message: "Invalid singleQuantity" });
 
-    const safeContainerType = containerType && Object.values(ContainerType).includes(containerType) ? containerType : DEFAULT_CONTAINER_TYPE;
-    const stock = await Stock.create({ productId, boxQuantity, singleQuantity, containerType: safeContainerType });
+    if (!productId || !isUUID(productId)) {
+      await transaction.rollback();
+      return res.status(400).json({ message: "Invalid productId" });
+    }
+
+    const existingStock = await Stock.findOne({ where: { productId }, transaction });
+    if (existingStock) {
+      await transaction.rollback();
+      return res.status(400).json({
+        message: "Stock already exists for this product. Use restock/update instead.",
+      });
+    }
+
+    const stock = await Stock.create(
+      {
+        productId,
+        boxQuantity: boxQuantity ?? 0,
+        singleQuantity: singleQuantity ?? 0,
+        containerType:
+          containerType && Object.values(ContainerType).includes(containerType)
+            ? containerType
+            : DEFAULT_CONTAINER_TYPE,
+      },
+      { transaction }
+    );
+
+    await recordStockHistory({
+      productId,
+      actionType: HistoryActionType.INITIAL,
+      beforeBox: 0,
+      beforeSingle: 0,
+      afterBox: stock.boxQuantity,
+      afterSingle: stock.singleQuantity,
+      notes: "Initial stock creation",
+      transaction,
+    });
+
+    await transaction.commit();
     return res.status(201).json(stock);
   } catch (error) {
+    await transaction.rollback();
     console.error("CREATE STOCK ERROR:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
 };
 
-// GET ALL STOCKS (with product details)
-export const getStocks = async (_: Request, res: Response): Promise<Response> => {
+// ----------------------------------------------------------------------
+// Get all stocks
+// ----------------------------------------------------------------------
+export const getStocks = async (_: Request, res: Response) => {
   try {
     const stocks = await Stock.findAll({
-      include: [{ model: Product, as: "product", attributes: ["id", "name", "sku", "bottlesPerBox", "boxBuyPrice", "boxSellPrice", "singleSellPrice", "isActive"] }],
+      include: [{ model: Product, as: "product" }],
       order: [["createdAt", "DESC"]],
     });
     return res.status(200).json(stocks);
@@ -55,11 +128,13 @@ export const getStocks = async (_: Request, res: Response): Promise<Response> =>
   }
 };
 
-// GET STOCK BY ID
-export const getStockById = async (req: Request, res: Response): Promise<Response> => {
+// ----------------------------------------------------------------------
+// Get stock by ID
+// ----------------------------------------------------------------------
+export const getStockById = async (req: Request, res: Response) => {
   try {
     const id = getId(req.params.id);
-    if (!id || !isUUID(id)) return res.status(400).json({ message: "Invalid ID format" });
+    if (!id || !isUUID(id)) return res.status(400).json({ message: "Invalid ID" });
     const stock = await Stock.findByPk(id, { include: [{ model: Product, as: "product" }] });
     if (!stock) return res.status(404).json({ message: "Not found" });
     return res.status(200).json(stock);
@@ -69,101 +144,210 @@ export const getStockById = async (req: Request, res: Response): Promise<Respons
   }
 };
 
-// UPDATE STOCK (with normalization)
-export const updateStock = async (req: Request, res: Response): Promise<Response> => {
+// ----------------------------------------------------------------------
+// Adjust stock (manual correction) – NO history recorded
+// ----------------------------------------------------------------------
+export const updateStock = async (req: Request, res: Response) => {
+  const transaction = await sequelize.transaction();
   try {
     const id = getId(req.params.id);
-    if (!id || !isUUID(id)) return res.status(400).json({ message: "Invalid ID format" });
-    const stock = await Stock.findByPk(id);
-    if (!stock) return res.status(404).json({ message: "Not found" });
-
-    const { boxQuantity, singleQuantity, containerType } = req.body;
-    const product = await Product.findByPk(stock.productId);
-    if (!product) return res.status(404).json({ message: "Product not found" });
-
-    let newBoxes = typeof boxQuantity === "number" && boxQuantity >= 0 ? boxQuantity : stock.boxQuantity;
-    let newSingles = typeof singleQuantity === "number" && singleQuantity >= 0 ? singleQuantity : stock.singleQuantity;
-
-    // Normalize: convert singles to boxes
-    const totalSingles = newBoxes * product.bottlesPerBox + newSingles;
-    const finalBoxes = Math.floor(totalSingles / product.bottlesPerBox);
-    const finalSingles = totalSingles % product.bottlesPerBox;
-
-    const updatePayload: any = {
-      boxQuantity: finalBoxes,
-      singleQuantity: finalSingles,
-    };
-    if (containerType && Object.values(ContainerType).includes(containerType)) {
-      updatePayload.containerType = containerType;
+    if (!id || !isUUID(id)) {
+      await transaction.rollback();
+      return res.status(400).json({ message: "Invalid ID" });
     }
 
-    await stock.update(updatePayload);
+    const stock = await Stock.findByPk(id, { transaction });
+    if (!stock) {
+      await transaction.rollback();
+      return res.status(404).json({ message: "Not found" });
+    }
+
+    const product = await Product.findByPk(stock.productId, { transaction });
+    if (!product) {
+      await transaction.rollback();
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    const { boxQuantity, singleQuantity, containerType } = req.body;
+
+    // Use provided values or fallback to current
+    const newBox = boxQuantity !== undefined ? Number(boxQuantity) : stock.boxQuantity;
+    const newSingle = singleQuantity !== undefined ? Number(singleQuantity) : stock.singleQuantity;
+
+    // Validate non‑negative
+    if (newBox < 0 || newSingle < 0) {
+      await transaction.rollback();
+      return res.status(400).json({ message: "Quantities cannot be negative" });
+    }
+
+    const unitsPerBox = product.unitsPerBox;
+    if (unitsPerBox <= 0) {
+      await transaction.rollback();
+      return res.status(400).json({ message: "Invalid unitsPerBox for product" });
+    }
+
+    // Recalculate total and normalize
+    const totalUnits = newBox * unitsPerBox + newSingle;
+    const finalBoxes = Math.floor(totalUnits / unitsPerBox);
+    const finalSingles = totalUnits % unitsPerBox;
+
+    await stock.update(
+      {
+        boxQuantity: finalBoxes,
+        singleQuantity: finalSingles,
+        containerType:
+          containerType && Object.values(ContainerType).includes(containerType)
+            ? containerType
+            : stock.containerType,
+      },
+      { transaction }
+    );
+
+    // NO history record for adjustments
+
+    await transaction.commit();
     return res.status(200).json(stock);
   } catch (error) {
+    await transaction.rollback();
     console.error("UPDATE STOCK ERROR:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
 };
 
-// DELETE STOCK
-export const deleteStock = async (req: Request, res: Response): Promise<Response> => {
+// ----------------------------------------------------------------------
+// Restock (add boxes and/or singles) – history recorded
+// ----------------------------------------------------------------------
+export const restockProduct = async (req: Request, res: Response) => {
+  const transaction = await sequelize.transaction();
   try {
     const id = getId(req.params.id);
-    if (!id || !isUUID(id)) return res.status(400).json({ message: "Invalid ID format" });
-    const stock = await Stock.findByPk(id);
-    if (!stock) return res.status(404).json({ message: "Not found" });
-    await stock.destroy();
+    if (!id || !isUUID(id)) {
+      await transaction.rollback();
+      return res.status(400).json({ message: "Invalid ID" });
+    }
+
+    const stock = await Stock.findByPk(id, { transaction });
+    if (!stock) {
+      await transaction.rollback();
+      return res.status(404).json({ message: "Stock not found" });
+    }
+
+    const product = await Product.findByPk(stock.productId, { transaction });
+    if (!product) {
+      await transaction.rollback();
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    const {
+      addBoxes = 0,
+      addSingles = 0,
+      notes,
+      isFree = false,
+    } = req.body;
+
+    const addBoxesNum = Number(addBoxes);
+    const addSinglesNum = Number(addSingles);
+
+    // Validate inputs
+    if (isNaN(addBoxesNum) || isNaN(addSinglesNum) || addBoxesNum < 0 || addSinglesNum < 0) {
+      await transaction.rollback();
+      return res.status(400).json({ message: "addBoxes and addSingles must be non‑negative numbers" });
+    }
+
+    const unitsPerBox = product.unitsPerBox;
+    if (unitsPerBox <= 0) {
+      await transaction.rollback();
+      return res.status(400).json({ message: "Invalid unitsPerBox for product" });
+    }
+
+    // Calculate new quantities
+    const currentTotalUnits = stock.boxQuantity * unitsPerBox + stock.singleQuantity;
+    const addedTotalUnits = addBoxesNum * unitsPerBox + addSinglesNum;
+    const newTotalUnits = currentTotalUnits + addedTotalUnits;
+
+    const finalBoxes = Math.floor(newTotalUnits / unitsPerBox);
+    const finalSingles = newTotalUnits % unitsPerBox;
+
+    const beforeBox = stock.boxQuantity;
+    const beforeSingle = stock.singleQuantity;
+
+    await stock.update(
+      {
+        boxQuantity: finalBoxes,
+        singleQuantity: finalSingles,
+      },
+      { transaction }
+    );
+
+    const historyNotes = notes || `Restocked: +${addBoxesNum} boxes, +${addSinglesNum} singles${isFree ? " (free)" : ""}`;
+
+    await recordStockHistory({
+      productId: stock.productId,
+      actionType: HistoryActionType.RESTOCK,
+      beforeBox,
+      beforeSingle,
+      afterBox: finalBoxes,
+      afterSingle: finalSingles,
+      notes: historyNotes,
+      isFree,
+      transaction,
+    });
+
+    await transaction.commit();
+    return res.status(200).json(stock);
+  } catch (error) {
+    await transaction.rollback();
+    console.error("RESTOCK ERROR:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+// ----------------------------------------------------------------------
+// Dedicated endpoint for free stock addition (just a convenience wrapper)
+// ----------------------------------------------------------------------
+export const addFreeStock = async (req: Request, res: Response) => {
+  req.body.isFree = true;
+  return restockProduct(req, res);
+};
+
+// ----------------------------------------------------------------------
+// Delete stock
+// ----------------------------------------------------------------------
+export const deleteStock = async (req: Request, res: Response) => {
+  const transaction = await sequelize.transaction();
+  try {
+    const id = getId(req.params.id);
+    if (!id || !isUUID(id)) {
+      await transaction.rollback();
+      return res.status(400).json({ message: "Invalid ID" });
+    }
+
+    const stock = await Stock.findByPk(id, { transaction });
+    if (!stock) {
+      await transaction.rollback();
+      return res.status(404).json({ message: "Not found" });
+    }
+
+    await stock.destroy({ transaction });
+    await transaction.commit();
     return res.status(200).json({ message: "Deleted successfully" });
   } catch (error) {
+    await transaction.rollback();
     console.error("DELETE STOCK ERROR:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
 };
 
-// NORMALIZE STOCK (convert all singles to boxes)
-export const normalizeStockByProduct = async (req: Request, res: Response): Promise<Response> => {
-  try {
-    const productId = getId(req.params.productId);
-    if (!productId || !isUUID(productId)) return res.status(400).json({ message: "Invalid productId" });
-
-    const stock = await Stock.findOne({ where: { productId } });
-    if (!stock) return res.status(404).json({ message: "Stock not found" });
-
-    const product = await Product.findByPk(productId);
-    if (!product) return res.status(404).json({ message: "Product not found" });
-
-    const totalSingles = stock.boxQuantity * product.bottlesPerBox + stock.singleQuantity;
-    const newBoxes = Math.floor(totalSingles / product.bottlesPerBox);
-    const newSingles = totalSingles % product.bottlesPerBox;
-
-    await stock.update({ boxQuantity: newBoxes, singleQuantity: newSingles });
-    return res.status(200).json({ message: "Stock normalized", boxQuantity: newBoxes, singleQuantity: newSingles });
-  } catch (error) {
-    console.error("NORMALIZE STOCK ERROR:", error);
-    return res.status(500).json({ message: "Internal server error" });
-  }
-};
-
-// EXCHANGE PRODUCTS (fixed)
-export const exchangeProducts = async (req: Request, res: Response): Promise<Response> => {
-  const transaction: Transaction = await sequelize.transaction();
+// ----------------------------------------------------------------------
+// Exchange products – recorded in Exchange table only, NOT in StockHistory
+// ----------------------------------------------------------------------
+export const exchangeProducts = async (req: Request, res: Response) => {
+  const transaction = await sequelize.transaction();
   try {
     const { sourceProductId, targetProductId, exchangeType, sourceQuantity, notes } = req.body;
-    if (!sourceProductId || !targetProductId || !exchangeType || !sourceQuantity) {
+    if (!sourceProductId || !targetProductId) {
       await transaction.rollback();
-      return res.status(400).json({ message: "Missing required fields" });
-    }
-    if (!isUUID(sourceProductId) || !isUUID(targetProductId)) {
-      await transaction.rollback();
-      return res.status(400).json({ message: "Invalid product ID format" });
-    }
-    if (sourceQuantity <= 0) {
-      await transaction.rollback();
-      return res.status(400).json({ message: "Quantity must be > 0" });
-    }
-    if (sourceProductId === targetProductId) {
-      await transaction.rollback();
-      return res.status(400).json({ message: "Cannot exchange same product" });
+      return res.status(400).json({ message: "Missing fields" });
     }
 
     const sourceProduct = await Product.findByPk(sourceProductId, { transaction });
@@ -173,82 +357,57 @@ export const exchangeProducts = async (req: Request, res: Response): Promise<Res
       return res.status(404).json({ message: "Product not found" });
     }
 
-    let sourceStock = await Stock.findOne({ where: { productId: sourceProductId }, transaction, lock: true });
-    let targetStock = await Stock.findOne({ where: { productId: targetProductId }, transaction, lock: true });
+    let sourceStock = await Stock.findOne({ where: { productId: sourceProductId }, transaction });
+    let targetStock = await Stock.findOne({ where: { productId: targetProductId }, transaction });
 
     if (!sourceStock) {
-      sourceStock = await Stock.create({ productId: sourceProductId, boxQuantity: 0, singleQuantity: 0, containerType: ContainerType.BOX }, { transaction });
+      sourceStock = await Stock.create(
+        { productId: sourceProductId, boxQuantity: 0, singleQuantity: 0, containerType: ContainerType.BOX },
+        { transaction }
+      );
     }
     if (!targetStock) {
-      targetStock = await Stock.create({ productId: targetProductId, boxQuantity: 0, singleQuantity: 0, containerType: ContainerType.BOX }, { transaction });
+      targetStock = await Stock.create(
+        { productId: targetProductId, boxQuantity: 0, singleQuantity: 0, containerType: ContainerType.BOX },
+        { transaction }
+      );
     }
 
-    // Calculate singles to deduct from source
-    const deductSingles = exchangeType === "box" ? sourceQuantity * sourceProduct.bottlesPerBox : sourceQuantity;
-
-    // Check source has enough singles
-    const sourceTotalSingles = sourceStock.boxQuantity * sourceProduct.bottlesPerBox + sourceStock.singleQuantity;
-    if (sourceTotalSingles < deductSingles) {
+    const deduct = exchangeType === "box" ? sourceQuantity * sourceProduct.unitsPerBox : sourceQuantity;
+    const sourceTotal = sourceStock.boxQuantity * sourceProduct.unitsPerBox + sourceStock.singleQuantity;
+    if (sourceTotal < deduct) {
       await transaction.rollback();
-      return res.status(400).json({ message: "Insufficient stock in source product" });
+      return res.status(400).json({ message: "Not enough stock" });
     }
 
-    // Deduct from source (singles first, then boxes)
-    let remainingDeduct = deductSingles;
-    let newSourceSingles = sourceStock.singleQuantity;
-    let newSourceBoxes = sourceStock.boxQuantity;
+    const updatedSource = sourceTotal - deduct;
+    const newSourceBoxes = Math.floor(updatedSource / sourceProduct.unitsPerBox);
+    const newSourceSingles = updatedSource % sourceProduct.unitsPerBox;
 
-    // Deduct from singles first
-    const deductFromSingles = Math.min(remainingDeduct, newSourceSingles);
-    newSourceSingles -= deductFromSingles;
-    remainingDeduct -= deductFromSingles;
+    const targetTotal = targetStock.boxQuantity * targetProduct.unitsPerBox + targetStock.singleQuantity + deduct;
+    const newTargetBoxes = Math.floor(targetTotal / targetProduct.unitsPerBox);
+    const newTargetSingles = targetTotal % targetProduct.unitsPerBox;
 
-    // Deduct from boxes if still needed
-    if (remainingDeduct > 0) {
-      const deductFromBoxes = Math.ceil(remainingDeduct / sourceProduct.bottlesPerBox);
-      newSourceBoxes -= deductFromBoxes;
-      // After removing boxes, adjust singles (the last box may be partially taken)
-      const newTotalSingles = newSourceBoxes * sourceProduct.bottlesPerBox + newSourceSingles;
-      // Ensure no negative
-      if (newTotalSingles < 0) {
-        await transaction.rollback();
-        return res.status(400).json({ message: "Stock became negative during exchange" });
-      }
-      // Re-normalize source after deduction
-      const newTotal = newSourceBoxes * sourceProduct.bottlesPerBox + newSourceSingles;
-      newSourceBoxes = Math.floor(newTotal / sourceProduct.bottlesPerBox);
-      newSourceSingles = newTotal % sourceProduct.bottlesPerBox;
-    }
+    // NO StockHistory records for exchange
 
-    // Add to target (in singles, then convert to boxes)
-    const targetTotalSingles = targetStock.boxQuantity * targetProduct.bottlesPerBox + targetStock.singleQuantity + deductSingles;
-    const newTargetBoxes = Math.floor(targetTotalSingles / targetProduct.bottlesPerBox);
-    const newTargetSingles = targetTotalSingles % targetProduct.bottlesPerBox;
-
-    // Apply updates
     await sourceStock.update({ boxQuantity: newSourceBoxes, singleQuantity: newSourceSingles }, { transaction });
     await targetStock.update({ boxQuantity: newTargetBoxes, singleQuantity: newTargetSingles }, { transaction });
 
-    // Log exchange with accurate quantities
-    const sourceGivenBoxes = sourceStock.boxQuantity - newSourceBoxes;
-    const sourceGivenSingles = sourceStock.singleQuantity - newSourceSingles;
-    const targetReceivedBoxes = newTargetBoxes - (targetStock?.boxQuantity || 0);
-    const targetReceivedSingles = newTargetSingles - (targetStock?.singleQuantity || 0);
-
-    await Exchange.create({
-      sourceProductId,
-      targetProductId,
-      exchangeType,
-      exchangeValue: sourceQuantity,
-      sourceQuantityBoxes: Math.max(0, sourceGivenBoxes),
-      sourceQuantitySingles: Math.max(0, sourceGivenSingles),
-      targetQuantityBoxes: Math.max(0, targetReceivedBoxes),
-      targetQuantitySingles: Math.max(0, targetReceivedSingles),
-      notes: notes || null,
-    }, { transaction });
+    await Exchange.create(
+      {
+        sourceProductId,
+        targetProductId,
+        exchangeType,
+        sourceQuantity,
+        targetQuantity: deduct,
+        exchangeValue: sourceQuantity,
+        notes: notes || null,
+      },
+      { transaction }
+    );
 
     await transaction.commit();
-    return res.status(200).json({ message: "Exchange completed successfully" });
+    return res.status(200).json({ message: "Exchange completed" });
   } catch (error) {
     await transaction.rollback();
     console.error("EXCHANGE ERROR:", error);
@@ -256,19 +415,41 @@ export const exchangeProducts = async (req: Request, res: Response): Promise<Res
   }
 };
 
-// GET EXCHANGE HISTORY
-export const getExchangeHistory = async (_: Request, res: Response): Promise<Response> => {
+// ----------------------------------------------------------------------
+// Get exchange history
+// ----------------------------------------------------------------------
+export const getExchangeHistory = async (_: Request, res: Response) => {
   try {
-    const exchanges = await Exchange.findAll({
+    const data = await Exchange.findAll({
       include: [
-        { model: Product, as: "sourceProduct", attributes: ["id", "name", "sku"] },
-        { model: Product, as: "targetProduct", attributes: ["id", "name", "sku"] },
+        { model: Product, as: "sourceProduct" },
+        { model: Product, as: "targetProduct" },
       ],
       order: [["createdAt", "DESC"]],
     });
-    return res.status(200).json(exchanges);
+    return res.status(200).json(data);
   } catch (error) {
-    console.error("GET EXCHANGE HISTORY ERROR:", error);
+    console.error("HISTORY ERROR:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+// ----------------------------------------------------------------------
+// Get stock history for a product (only INITIAL and RESTOCK now)
+// ----------------------------------------------------------------------
+export const getStockHistory = async (req: Request, res: Response) => {
+  try {
+    const productId = getId(req.params.productId);
+    if (!productId || !isUUID(productId)) {
+      return res.status(400).json({ message: "Invalid productId" });
+    }
+    const history = await StockHistory.findAll({
+      where: { productId },
+      order: [["createdAt", "DESC"]],
+    });
+    return res.status(200).json(history);
+  } catch (error) {
+    console.error("GET STOCK HISTORY ERROR:", error);
     return res.status(500).json({ message: "Internal server error" });
   }
 };
