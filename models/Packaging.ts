@@ -1,13 +1,8 @@
 import { DataTypes, Model, Sequelize, Optional } from "sequelize";
 
-/**
- * =====================
- * TYPES
- * =====================
- */
 interface PackagingAttributes {
   id: string;
-  type: string; // ✅ changed from enum to string
+  type: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -17,19 +12,12 @@ type PackagingCreationAttributes = Optional<
   "id" | "createdAt" | "updatedAt"
 >;
 
-/**
- * =====================
- * MODEL
- * =====================
- */
 export default (sequelize: Sequelize) => {
   class Packaging
     extends Model<PackagingAttributes, PackagingCreationAttributes>
-    implements PackagingAttributes
-  {
+    implements PackagingAttributes {
     public id!: string;
     public type!: string;
-
     public readonly createdAt!: Date;
     public readonly updatedAt!: Date;
   }
@@ -43,7 +31,7 @@ export default (sequelize: Sequelize) => {
       },
 
       type: {
-        type: DataTypes.STRING, // ✅ flexible now
+        type: DataTypes.STRING,
         allowNull: false,
         unique: true,
 
@@ -56,6 +44,9 @@ export default (sequelize: Sequelize) => {
             msg: "Packaging type too long",
           },
         },
+        set(value: string) {
+          this.setDataValue("type", value.trim());
+        }
       },
     },
     {

@@ -1,6 +1,6 @@
-// models/index.ts
 import { Sequelize } from "sequelize";
 import dotenv from "dotenv";
+
 dotenv.config();
 
 export const sequelize = new Sequelize(
@@ -11,6 +11,13 @@ export const sequelize = new Sequelize(
     host: process.env.DB_HOST as string,
     dialect: "mysql",
     logging: false,
+    timezone: "+03:00", // Recommended for Ethiopia (EAT)
+    pool: {
+      max: 5,
+      min: 0,
+      acquire: 30000,
+      idle: 10000,
+    },
   }
 );
 
@@ -26,7 +33,7 @@ import initPackaging from "./Packaging";
 import initExchange from "./Exchange";
 import initStockHistory from "./StockHistory";
 
-// Initialise models
+// Initialize models
 const Product = initProduct(sequelize);
 const ProductPrice = initProductPrice(sequelize);
 const Stock = initStock(sequelize);
@@ -37,6 +44,20 @@ const Category = initCategory(sequelize);
 const Packaging = initPackaging(sequelize);
 const Exchange = initExchange(sequelize);
 const StockHistory = initStockHistory(sequelize);
+
+// Type Export for use in other files
+export const models = {
+  Product,
+  ProductPrice,
+  Stock,
+  Sale,
+  SaleItem,
+  Brand,
+  Category,
+  Packaging,
+  Exchange,
+  StockHistory,
+};
 
 export interface DB {
   sequelize: Sequelize;
@@ -54,56 +75,61 @@ export interface DB {
 
 const db: DB = {
   sequelize,
-  Product,
-  ProductPrice,
-  Stock,
-  Sale,
-  SaleItem,
-  Brand,
-  Category,
-  Packaging,
-  Exchange,
-  StockHistory,
+  ...models
 };
 
-// ===== ASSOCIATIONS =====
+// ===== 100x ASSOCIATIONS =====
 
-// Product ⇄ ProductPrice
+/**
+ * PRODUCT CORE
+ */
+db.Product.belongsTo(db.Category, { foreignKey: "categoryId", as: "category" });
+db.Category.hasMany(db.Product, { foreignKey: "categoryId", as: "products" });
+
+db.Product.belongsTo(db.Brand, { foreignKey: "brandId", as: "brand" });
+db.Brand.hasMany(db.Product, { foreignKey: "brandId", as: "products" });
+
+db.Product.belongsTo(db.Packaging, { foreignKey: "packagingId", as: "packaging" });
+db.Packaging.hasMany(db.Product, { foreignKey: "packagingId", as: "products" });
+
+/**
+ * PRICING & STOCK
+ */
 db.Product.hasMany(db.ProductPrice, { foreignKey: "productId", as: "prices", onDelete: "CASCADE" });
 db.ProductPrice.belongsTo(db.Product, { foreignKey: "productId", as: "product" });
 
-// Product ⇄ Category / Brand / Packaging
-db.Product.belongsTo(db.Category, { foreignKey: "categoryId", as: "category" });
-db.Category.hasMany(db.Product, { foreignKey: "categoryId" });
-
-db.Product.belongsTo(db.Brand, { foreignKey: "brandId", as: "brand" });
-db.Brand.hasMany(db.Product, { foreignKey: "brandId" });
-
-db.Product.belongsTo(db.Packaging, { foreignKey: "packagingId", as: "packaging" });
-db.Packaging.hasMany(db.Product, { foreignKey: "packagingId" });
-
-// Product ⇄ Stock (one-to-one)
 db.Product.hasOne(db.Stock, { foreignKey: "productId", as: "stock", onDelete: "CASCADE" });
 db.Stock.belongsTo(db.Product, { foreignKey: "productId", as: "product" });
 
-// Product ⇄ SaleItem
-db.Product.hasMany(db.SaleItem, { foreignKey: "productId", as: "saleItems" });
-db.SaleItem.belongsTo(db.Product, { foreignKey: "productId", as: "product" });
-
-// Sale ⇄ SaleItem
-db.Sale.hasMany(db.SaleItem, { foreignKey: "saleId", as: "items" });
+/**
+ * SALES & ITEMS
+ */
+db.Sale.hasMany(db.SaleItem, { foreignKey: "saleId", as: "items", onDelete: "CASCADE" });
 db.SaleItem.belongsTo(db.Sale, { foreignKey: "saleId", as: "sale" });
 
-// Product ⇄ StockHistory
-db.Product.hasMany(db.StockHistory, { foreignKey: "productId", as: "history", onDelete: "CASCADE" });
+db.SaleItem.belongsTo(db.Product, { foreignKey: "productId", as: "product" });
+db.Product.hasMany(db.SaleItem, { foreignKey: "productId", as: "sales" });
+
+// The Financial Link: Link SaleItem to the Price version used
+db.SaleItem.belongsTo(db.ProductPrice, { foreignKey: "priceId", as: "priceVersion" });
+
+/**
+ * HISTORY & AUDIT
+ */
+db.Product.hasMany(db.StockHistory, { foreignKey: "productId", as: "stockHistory" });
 db.StockHistory.belongsTo(db.Product, { foreignKey: "productId", as: "product" });
 
-// Sale ⇄ StockHistory
-db.Sale.hasMany(db.StockHistory, { foreignKey: "saleId", as: "stockHistory" });
 db.StockHistory.belongsTo(db.Sale, { foreignKey: "saleId", as: "sale" });
+db.StockHistory.belongsTo(db.ProductPrice, { foreignKey: "priceId", as: "price" });
 
-// Exchange ⇄ Product
+/**
+ * EXCHANGES (Double-Product Relationship)
+ */
 db.Exchange.belongsTo(db.Product, { foreignKey: "sourceProductId", as: "sourceProduct" });
 db.Exchange.belongsTo(db.Product, { foreignKey: "targetProductId", as: "targetProduct" });
+
+// Financial link for Exchange
+db.Exchange.belongsTo(db.ProductPrice, { foreignKey: "sourcePriceId", as: "sourcePrice" });
+db.Exchange.belongsTo(db.ProductPrice, { foreignKey: "targetPriceId", as: "targetPrice" });
 
 export default db;

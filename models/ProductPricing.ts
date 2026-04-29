@@ -3,16 +3,12 @@ import { DataTypes, Model, Sequelize, Optional } from "sequelize";
 interface ProductPriceAttributes {
   id: string;
   productId: string;
-
   buyPricePerBox: number;
   sellPricePerBox: number;
   sellPricePerUnit: number;
-
   startAt: Date;
   endAt?: Date | null;
-
   allowLoss: boolean;
-
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -25,8 +21,7 @@ type ProductPriceCreationAttributes = Optional<
 export default (sequelize: Sequelize) => {
   class ProductPrice
     extends Model<ProductPriceAttributes, ProductPriceCreationAttributes>
-    implements ProductPriceAttributes
-  {
+    implements ProductPriceAttributes {
     public id!: string;
     public productId!: string;
 
@@ -50,47 +45,48 @@ export default (sequelize: Sequelize) => {
         defaultValue: DataTypes.UUIDV4,
         primaryKey: true,
       },
-
       productId: {
         type: DataTypes.UUID,
         allowNull: false,
+        references: {
+          model: 'products',
+          key: 'id'
+        },
+        onDelete: 'CASCADE'
       },
-
       buyPricePerBox: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
         get() {
-          return Number(this.getDataValue("buyPricePerBox"));
+          const value = this.getDataValue("buyPricePerBox");
+          return value ? Number(value) : 0;
         },
       },
-
       sellPricePerBox: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
         get() {
-          return Number(this.getDataValue("sellPricePerBox"));
+          const value = this.getDataValue("sellPricePerBox");
+          return value ? Number(value) : 0;
         },
       },
-
       sellPricePerUnit: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
         get() {
-          return Number(this.getDataValue("sellPricePerUnit"));
+          const value = this.getDataValue("sellPricePerUnit");
+          return value ? Number(value) : 0;
         },
       },
-
       startAt: {
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: DataTypes.NOW,
       },
-
       endAt: {
         type: DataTypes.DATE,
         allowNull: true,
       },
-
       allowLoss: {
         type: DataTypes.BOOLEAN,
         defaultValue: false,
@@ -100,7 +96,6 @@ export default (sequelize: Sequelize) => {
       sequelize,
       tableName: "product_prices",
       timestamps: true,
-
       validate: {
         pricingGuard() {
           const buy = Number(this.buyPricePerBox);

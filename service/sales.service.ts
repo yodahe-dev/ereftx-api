@@ -16,7 +16,7 @@ type SaleItem = InstanceType<ReturnType<typeof SaleItemModel>>;
 
 // ---------- Input types (unchanged) ----------
 type CreateSaleInput = {
-  name: string;
+  customerName: string;
   description?: string | null;
   paymentType: "cash" | "credit";
   paymentStatus?: "paid" | "pending";
@@ -29,7 +29,7 @@ type CreateSaleInput = {
 };
 
 type UpdateSaleInput = {
-  name?: string;
+  customerName?: string;
   description?: string | null;
   paymentType?: "cash" | "credit";
   paymentStatus?: "paid" | "pending";
@@ -181,7 +181,7 @@ export const createSale = async (input: CreateSaleInput) => {
   try {
     const sale = await db.Sale.create(
       {
-        name: input.name,
+        customerName: input.customerName,
         description: input.description,
         paymentType: input.paymentType,
         paymentStatus: input.paymentStatus || "paid",
@@ -238,7 +238,7 @@ export const updateSale = async (saleId: string, input: UpdateSaleInput) => {
     if (!sale) throw new Error("Sale not found");
 
     // Update metadata
-    if (input.name !== undefined) sale.name = input.name;
+    if (input.customerName !== undefined) sale.customerName = input.customerName;
     if (input.description !== undefined) sale.description = input.description;
     if (input.paymentType) sale.paymentType = input.paymentType;
     if (input.paymentStatus) sale.paymentStatus = input.paymentStatus;

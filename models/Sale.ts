@@ -1,13 +1,13 @@
 import { DataTypes, Model, Sequelize, Optional } from "sequelize";
-// Import the model class to use its instance type
-import SaleItemModel from "./SaleItems"; // default export is the class
+import type { SaleItem } from "./SaleItems";
 
 export type PaymentType = "cash" | "credit";
 export type PaymentStatus = "paid" | "pending";
 
 interface SaleAttributes {
   id: string;
-  name: string;                     // required
+  invoiceNumber: string;
+  customerName: string;
   description?: string | null;
   totalAmount: number;
   totalCost: number;
@@ -20,16 +20,14 @@ interface SaleAttributes {
 
 type SaleCreationAttributes = Optional<
   SaleAttributes,
-  "id" | "createdAt" | "updatedAt" | "totalAmount" | "totalCost" | "profit" | "description"
+  "id" | "createdAt" | "updatedAt" | "totalAmount" | "totalCost" | "profit" | "description" | "invoiceNumber"
 >;
 
 export default (sequelize: Sequelize) => {
-  class Sale
-    extends Model<SaleAttributes, SaleCreationAttributes>
-    implements SaleAttributes
-  {
+  class Sale extends Model<SaleAttributes, SaleCreationAttributes> implements SaleAttributes {
     public id!: string;
-    public name!: string;
+    public invoiceNumber!: string;
+    public customerName!: string;
     public description!: string | null;
     public totalAmount!: number;
     public totalCost!: number;
@@ -39,66 +37,39 @@ export default (sequelize: Sequelize) => {
     public readonly createdAt!: Date;
     public readonly updatedAt!: Date;
 
-    // 👇 Properly typed association
-    public items?: InstanceType<ReturnType<typeof SaleItemModel>>[];
+    // ✅ ADD THIS (FIX)
+    public items?: SaleItem[];
   }
 
-  Sale.init(
-    {
-      id: {
-        type: DataTypes.UUID,
-        defaultValue: DataTypes.UUIDV4,
-        primaryKey: true,
-      },
-      name: {
-        type: DataTypes.STRING(120),
-        allowNull: false,
-        set(value: string) {
-          this.setDataValue("name", value.trim());
-        },
-      },
-      description: { type: DataTypes.TEXT, allowNull: true },
-      totalAmount: {
-        type: DataTypes.DECIMAL(12, 2),
-        allowNull: false,
-        defaultValue: 0,
-        get() { return Number(this.getDataValue("totalAmount")); },
-      },
-      totalCost: {
-        type: DataTypes.DECIMAL(12, 2),
-        allowNull: false,
-        defaultValue: 0,
-        get() { return Number(this.getDataValue("totalCost")); },
-      },
-      profit: {
-        type: DataTypes.DECIMAL(12, 2),
-        allowNull: false,
-        defaultValue: 0,
-        get() { return Number(this.getDataValue("profit")); },
-      },
-      paymentType: {
-        type: DataTypes.STRING(10),
-        allowNull: false,
-        validate: { isIn: [["cash", "credit"]] },
-      },
-      paymentStatus: {
-        type: DataTypes.STRING(10),
-        allowNull: false,
-        defaultValue: "paid",
-        validate: { isIn: [["paid", "pending"]] },
-      },
+  Sale.init({
+    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    invoiceNumber: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      unique: true,
+      defaultValue: () => `INV-${Date.now()}`
     },
-    {
-      sequelize,
-      tableName: "sales",
-      timestamps: true,
-      indexes: [
-        { fields: ["createdAt"] },
-        { fields: ["paymentType"] },
-        { fields: ["paymentStatus"] },
-      ],
-    }
-  );
+    customerName: {
+      type: DataTypes.STRING(120),
+      allowNull: false,
+      set(value: string) { this.setDataValue("customerName", value.trim()); }
+    },
+    description: { type: DataTypes.TEXT, allowNull: true },
+    totalAmount: { type: DataTypes.DECIMAL(12, 2), allowNull: false, defaultValue: 0 },
+    totalCost: { type: DataTypes.DECIMAL(12, 2), allowNull: false, defaultValue: 0 },
+    profit: { type: DataTypes.DECIMAL(12, 2), allowNull: false, defaultValue: 0 },
+    paymentType: { type: DataTypes.ENUM("cash", "credit"), allowNull: false },
+    paymentStatus: { type: DataTypes.ENUM("paid", "pending"), allowNull: false, defaultValue: "paid" },
+  }, {
+    sequelize,
+    tableName: "sales",
+    timestamps: true,
+    indexes: [
+      { fields: ["invoiceNumber"], unique: true },
+      { fields: ["createdAt"] },
+      { fields: ["paymentStatus"] }
+    ]
+  });
 
   return Sale;
 };

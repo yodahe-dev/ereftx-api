@@ -1,4 +1,3 @@
-// models/Stock.ts
 import { DataTypes, Model, Sequelize, Optional } from "sequelize";
 
 export enum ContainerType {
@@ -26,12 +25,12 @@ export default (sequelize: Sequelize) => {
     extends Model<StockAttributes, StockCreationAttributes>
     implements StockAttributes
   {
-    [x: string]: any;
     public id!: string;
     public productId!: string;
     public boxQuantity!: number;
     public singleQuantity!: number;
     public containerType!: ContainerType;
+
     public readonly createdAt!: Date;
     public readonly updatedAt!: Date;
   }
@@ -46,6 +45,12 @@ export default (sequelize: Sequelize) => {
       productId: {
         type: DataTypes.UUID,
         allowNull: false,
+        unique: true, // A product only ever has ONE stock row
+        references: {
+          model: "products",
+          key: "id",
+        },
+        onDelete: "CASCADE",
       },
       boxQuantity: {
         type: DataTypes.INTEGER,
@@ -62,13 +67,19 @@ export default (sequelize: Sequelize) => {
       containerType: {
         type: DataTypes.ENUM(...Object.values(ContainerType)),
         allowNull: false,
+        defaultValue: ContainerType.BOX,
       },
     },
     {
       sequelize,
       tableName: "stocks",
       timestamps: true,
-      indexes: [{ unique: true, fields: ["productId"] }],
+      indexes: [
+        {
+          unique: true,
+          fields: ["productId"],
+        },
+      ],
     }
   );
 

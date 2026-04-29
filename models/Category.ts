@@ -58,10 +58,6 @@ export default (sequelize: Sequelize) => {
             msg: "Name must be between 1 and 100 characters",
           },
         },
-
-        /**
-         * normalize data (important)
-         */
         set(value: string) {
           this.setDataValue("name", value.trim().toLowerCase());
         },

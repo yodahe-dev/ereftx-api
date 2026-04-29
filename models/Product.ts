@@ -2,15 +2,11 @@ import { DataTypes, Model, Sequelize, Optional } from "sequelize";
 
 interface ProductAttributes {
   id: string;
-
   name: string;
-
   categoryId: string;
   brandId: string;
   packagingId: string;
-
   unitsPerBox: number;
-
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -57,29 +53,56 @@ export default (sequelize: Sequelize) => {
       categoryId: {
         type: DataTypes.UUID,
         allowNull: false,
+        // FIXED: Added DB-level relationship
+        references: {
+          model: "categories",
+          key: "id",
+        },
       },
 
       brandId: {
         type: DataTypes.UUID,
         allowNull: false,
+        // FIXED: Added DB-level relationship
+        references: {
+          model: "brands",
+          key: "id",
+        },
       },
 
       packagingId: {
         type: DataTypes.UUID,
         allowNull: false,
+        // FIXED: Added DB-level relationship
+        references: {
+          model: "packagings",
+          key: "id",
+        },
       },
 
       unitsPerBox: {
         type: DataTypes.INTEGER,
         allowNull: false,
         defaultValue: 24,
-        validate: { min: 1 },
+        validate: {
+          min: {
+            args: [1],
+            msg: "A box must contain at least 1 unit",
+          },
+        },
       },
     },
     {
       sequelize,
       tableName: "products",
       timestamps: true,
+      indexes: [
+        {
+          unique: true,
+          fields: ["name", "brandId", "packagingId"],
+          name: "products_unique_variant",
+        },
+      ],
     }
   );
 
