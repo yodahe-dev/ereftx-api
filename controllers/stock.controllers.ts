@@ -2,17 +2,21 @@ import { Request, Response } from "express";
 import { z } from "zod";
 import { validate as isUUID } from "uuid";
 import db from "../models";
-import { 
-  createStockService, 
-  restockService, 
-  updateStockService 
+import {
+  createStockService,
+  restockService,
+  updateStockService,
 } from "../service/stock.service";
 import { processExchangeService } from "../service/exchange.service";
-import { exchangeSchema } from "../validations/stock.schema";
+import {
+  createStockSchema,
+  updateStockSchema,
+  restockSchema,
+  exchangeSchema,
+} from "../validations/stock.schema";
 
 const { Stock, Product, Exchange, StockHistory } = db;
 
-// ---------- Helper: Extract string ID from params ----------
 function getId(value: string | string[] | undefined): string | null {
   if (!value) return null;
   if (Array.isArray(value)) return value[0] ?? null;
@@ -23,10 +27,13 @@ function getId(value: string | string[] | undefined): string | null {
 
 export const createStock = async (req: Request, res: Response) => {
   try {
-    // Service handles the transaction and StockHistory (with priceId)
-    const stock = await createStockService(req.body);
+    const validated = createStockSchema.parse(req.body);
+    const stock = await createStockService(validated);
     return res.status(201).json(stock);
   } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json(error.flatten());
+    }
     console.error("CREATE STOCK ERROR:", error);
     return res.status(400).json({ message: error.message || "Internal server error" });
   }
@@ -73,10 +80,13 @@ export const updateStock = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "Invalid ID" });
     }
 
-    // Service handles units math and History record with priceId
-    const updatedStock = await updateStockService(id, req.body);
+    const validated = updateStockSchema.parse(req.body);
+    const updatedStock = await updateStockService(id, validated);
     return res.status(200).json(updatedStock);
   } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json(error.flatten());
+    }
     console.error("UPDATE STOCK ERROR:", error);
     return res.status(400).json({ message: error.message || "Internal server error" });
   }
@@ -89,10 +99,13 @@ export const restockProduct = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "Invalid ID" });
     }
 
-    // Service handles adding quantities and History record
-    const stock = await restockService(id, req.body);
+    const validated = restockSchema.parse(req.body);
+    const stock = await restockService(id, validated);
     return res.status(200).json(stock);
   } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json(error.flatten());
+    }
     console.error("RESTOCK ERROR:", error);
     return res.status(400).json({ message: error.message || "Internal server error" });
   }
@@ -100,15 +113,11 @@ export const restockProduct = async (req: Request, res: Response) => {
 
 export const exchangeProducts = async (req: Request, res: Response) => {
   try {
-    // Validate request body using the Zod schema
     const validatedData = exchangeSchema.parse(req.body);
-
-    // Service handles the complex dual-product transaction & ledger
     const result = await processExchangeService(validatedData);
-
-    return res.status(200).json({ 
+    return res.status(200).json({
       message: "Exchange completed successfully",
-      data: result 
+      data: result,
     });
   } catch (error: any) {
     if (error instanceof z.ZodError) {

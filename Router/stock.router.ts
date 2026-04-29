@@ -5,37 +5,27 @@ import {
   getStockById,
   updateStock,
   deleteStock,
-  exchangeProducts, // This now uses the processExchangeService refactor
+  exchangeProducts,
   getExchangeHistory,
   restockProduct,
   getStockHistory,
-} from "../controllers/stock.controllers"; // Note: Check if your filename is controller or controllers (singular is standard)
+} from "../controllers/stock.controllers";
 
 const router = Router();
 
-/**
- * @section Core CRUD
- */
+// Static routes first
 router.post("/", createStock);
 router.get("/", getStocks);
 
-/**
- * @section History & Analytics
- * IMPORTANT: Static paths like /history/... must come BEFORE dynamic paths like /:id
- * otherwise Express will think "history" is a product ID.
- */
+// History & analytics
 router.get("/history/exchanges", getExchangeHistory);
 router.get("/history/:productId", getStockHistory);
 
-/**
- * @section Stock Operations
- */
+// Stock operations
 router.post("/exchange", exchangeProducts);
-router.post("/restock", restockProduct); // Refactored to handle body data rather than just ID
+router.post("/:id/restock", restockProduct);   // <--- FIXED: mount at /:id/restock
 
-/**
- * @section Individual Resource
- */
+// Individual resource (dynamic :id – must come after more specific paths)
 router.get("/:id", getStockById);
 router.put("/:id", updateStock);
 router.delete("/:id", deleteStock);
