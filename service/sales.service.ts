@@ -1,47 +1,27 @@
 import db from "../models";
 import { HistoryActionType } from "../models/StockHistory";
 import type { Transaction } from "sequelize";
+import { CreateSaleInput, UpdateSaleInput } from "../validations/sale.schema";
 
-// Import model classes (default exports) to create instance types
-import ProductModel from "../models/Product";
-import ProductPriceModel from "../models/ProductPricing";
-import StockModel from "../models/Stock";
-import SaleItemModel from "../models/SaleItems";
+// Type aliases – using the attribute interfaces from model files for clarity
+interface Product {
+  id: string;
+  name: string;
+  unitsPerBox: number;
+}
+interface ProductPrice {
+  id: string;
+  buyPricePerBox: number;
+  sellPricePerBox: number;
+  sellPricePerUnit: number;
+}
+interface Stock {
+  boxQuantity: number;
+  singleQuantity: number;
+  save: (opts?: any) => Promise<Stock>;
+}
 
-// Convenience type aliases
-type Product = InstanceType<ReturnType<typeof ProductModel>>;
-type ProductPrice = InstanceType<ReturnType<typeof ProductPriceModel>>;
-type Stock = InstanceType<ReturnType<typeof StockModel>>;
-type SaleItem = InstanceType<ReturnType<typeof SaleItemModel>>;
-
-// ---------- Input types (unchanged) ----------
-type CreateSaleInput = {
-  customerName: string;
-  description?: string | null;
-  paymentType: "cash" | "credit";
-  paymentStatus?: "paid" | "pending";
-  items: {
-    productId: string;
-    quantity: number;
-    unitType: "box" | "single";
-    customUnitPrice?: number;
-  }[];
-};
-
-type UpdateSaleInput = {
-  customerName?: string;
-  description?: string | null;
-  paymentType?: "cash" | "credit";
-  paymentStatus?: "paid" | "pending";
-  items?: {
-    productId: string;
-    quantity: number;
-    unitType: "box" | "single";
-    customUnitPrice?: number;
-  }[];
-};
-
-// ---------- Helper return type ----------
+// Helper return type
 interface ProcessedItem {
   unitPrice: number;
   costPrice: number;
@@ -52,7 +32,10 @@ interface ProcessedItem {
   priceId: string;
 }
 
-// ---------- Core helper ----------
+/**
+ * Core helper – processes a single sale item by deducting/returning stock and
+ * calculating prices. ALWAYS records StockHistory with the correct priceId.
+ */
 async function processSaleItem(
   saleId: string,
   item: {
@@ -64,44 +47,42 @@ async function processSaleItem(
   t: Transaction,
   isAdding: boolean
 ): Promise<ProcessedItem> {
-  const product = (await db.Product.findByPk(item.productId, { transaction: t })) as Product | null;
-  if (!product) throw new Error("Product not found");
+  // Fetch required entities
+  const product = await db.Product.findByPk(item.productId, { transaction: t }) as Product | null;
+  if (!product) throw new Error(`Product not found: ${item.productId}`);
 
-  const price = (await db.ProductPrice.findOne({
+  const price = await db.ProductPrice.findOne({
     where: { productId: item.productId, endAt: null },
     transaction: t,
-  })) as ProductPrice | null;
-  if (!price) throw new Error("Price not found");
+  }) as ProductPrice | null;
+  if (!price) throw new Error(`No active price for product ${item.productId}`);
 
-  const stock = (await db.Stock.findOne({
+  const stock = await db.Stock.findOne({
     where: { productId: item.productId },
     transaction: t,
     lock: t.LOCK.UPDATE,
-  })) as Stock | null;
-  if (!stock) throw new Error("Stock not found");
+  }) as Stock | null;
+  if (!stock) throw new Error(`Stock not found for product ${item.productId}`);
 
   const beforeBox = stock.boxQuantity;
   const beforeSingle = stock.singleQuantity;
 
   if (isAdding) {
     // Deduct stock
-    const totalUnits = item.unitType === "box"
-      ? item.quantity * product.unitsPerBox
-      : item.quantity;
-
     if (item.unitType === "box") {
       if (stock.boxQuantity < item.quantity)
-        throw new Error(`Not enough boxes of ${product.name}`);
+        throw new Error(`Not enough boxes of ${product.name} (have ${stock.boxQuantity})`);
       stock.boxQuantity -= item.quantity;
     } else {
-      // Singles with possible box‑breaking
+      // Single deduction with automatic box‑breaking
       if (stock.singleQuantity < item.quantity) {
-        const neededSingles = item.quantity - stock.singleQuantity;
-        const boxesToBreak = Math.ceil(neededSingles / product.unitsPerBox);
+        const shortage = item.quantity - stock.singleQuantity;
+        const boxesToBreak = Math.ceil(shortage / product.unitsPerBox);
         if (stock.boxQuantity < boxesToBreak)
           throw new Error(
-            `Not enough singles of ${product.name} (even after breaking boxes)`
+            `Not enough singles of ${product.name}. Need ${item.quantity}, have ${stock.singleQuantity} singles and ${stock.boxQuantity} boxes.`
           );
+        // Break boxes into singles
         stock.boxQuantity -= boxesToBreak;
         stock.singleQuantity += boxesToBreak * product.unitsPerBox;
       }
@@ -110,9 +91,11 @@ async function processSaleItem(
 
     await stock.save({ transaction: t });
 
+    // Record stock history WITH priceId
     await db.StockHistory.create(
       {
         productId: product.id,
+        priceId: price.id,   // <--- THIS IS THE CRITICAL FIX
         actionType: HistoryActionType.SALE,
         boxQuantityBefore: beforeBox,
         singleQuantityBefore: beforeSingle,
@@ -137,6 +120,7 @@ async function processSaleItem(
     await db.StockHistory.create(
       {
         productId: product.id,
+        priceId: price.id,
         actionType: HistoryActionType.ADJUST,
         boxQuantityBefore: beforeBox,
         singleQuantityBefore: beforeSingle,
@@ -163,6 +147,7 @@ async function processSaleItem(
   const costPrice = item.unitType === "box" ? price.buyPricePerBox : costPerUnit;
   const totalPrice = unitPrice * item.quantity;
   const totalItemCost = costPrice * item.quantity;
+  const totalUnits = item.unitType === "box" ? item.quantity * product.unitsPerBox : item.quantity;
 
   return {
     unitPrice,
@@ -170,12 +155,14 @@ async function processSaleItem(
     totalPrice,
     totalItemCost,
     productName: product.name,
-    totalUnits: item.unitType === "box" ? item.quantity * product.unitsPerBox : item.quantity,
+    totalUnits,
     priceId: price.id,
   };
 }
 
-// ---------- CREATE SALE ----------
+/**
+ * CREATE SALE
+ */
 export const createSale = async (input: CreateSaleInput) => {
   const t = await db.sequelize.transaction();
   try {
@@ -184,7 +171,7 @@ export const createSale = async (input: CreateSaleInput) => {
         customerName: input.customerName,
         description: input.description,
         paymentType: input.paymentType,
-        paymentStatus: input.paymentStatus || "paid",
+        paymentStatus: input.paymentStatus,
       },
       { transaction: t }
     );
@@ -220,21 +207,27 @@ export const createSale = async (input: CreateSaleInput) => {
     await sale.save({ transaction: t });
 
     await t.commit();
-    return sale;
+    // Reload with items for the response
+    const fullSale = await db.Sale.findByPk(sale.id, {
+      include: [{ association: "items" }],
+    });
+    return fullSale;
   } catch (err) {
     await t.rollback();
     throw err;
   }
 };
 
-// ---------- UPDATE SALE ----------
+/**
+ * UPDATE SALE
+ */
 export const updateSale = async (saleId: string, input: UpdateSaleInput) => {
   const t = await db.sequelize.transaction();
   try {
-    const sale = (await db.Sale.findByPk(saleId, {
+    const sale = await db.Sale.findByPk(saleId, {
       include: [{ association: "items" }],
       transaction: t,
-    })) as InstanceType<typeof db.Sale> | null;
+    });
     if (!sale) throw new Error("Sale not found");
 
     // Update metadata
@@ -244,52 +237,26 @@ export const updateSale = async (saleId: string, input: UpdateSaleInput) => {
     if (input.paymentStatus) sale.paymentStatus = input.paymentStatus;
     await sale.save({ transaction: t });
 
+    // If items are provided, replace them entirely
     if (input.items && input.items.length > 0) {
-      // Reverse old items
+      // Reverse old items (return stock)
       const oldItems = sale.items ?? [];
       for (const oldItem of oldItems) {
-        const product = (await db.Product.findByPk(oldItem.productId, { transaction: t })) as Product | null;
-        if (!product) throw new Error("Product not found");
-        const price = (await db.ProductPrice.findByPk(oldItem.priceId, { transaction: t })) as ProductPrice | null;
-        if (!price) throw new Error("Price not found");
-
-        const stock = (await db.Stock.findOne({
-          where: { productId: oldItem.productId },
-          transaction: t,
-          lock: t.LOCK.UPDATE,
-        })) as Stock | null;
-        if (!stock) throw new Error("Stock not found");
-
-        const beforeBox = stock.boxQuantity;
-        const beforeSingle = stock.singleQuantity;
-
-        if (oldItem.unitType === "box") {
-          stock.boxQuantity += oldItem.quantity;
-        } else {
-          stock.singleQuantity += oldItem.quantity;
-        }
-        await stock.save({ transaction: t });
-
-        await db.StockHistory.create(
+        // Use processSaleItem with isAdding=false to return stock
+        await processSaleItem(
+          sale.id,
           {
             productId: oldItem.productId,
-            actionType: HistoryActionType.ADJUST,
-            boxQuantityBefore: beforeBox,
-            singleQuantityBefore: beforeSingle,
-            boxQuantityAfter: stock.boxQuantity,
-            singleQuantityAfter: stock.singleQuantity,
-            boxQuantityChange: stock.boxQuantity - beforeBox,
-            singleQuantityChange: stock.singleQuantity - beforeSingle,
-            saleId,
-            isFree: false,
+            quantity: oldItem.quantity,
+            unitType: oldItem.unitType,
           },
-          { transaction: t }
+          t,
+          false
         );
-
         await oldItem.destroy({ transaction: t });
       }
 
-      // Add new items
+      // Process new items
       let totalAmount = 0;
       let totalCost = 0;
       for (const item of input.items) {
@@ -323,9 +290,9 @@ export const updateSale = async (saleId: string, input: UpdateSaleInput) => {
     await t.commit();
 
     // Reload with items
-    const updatedSale = (await db.Sale.findByPk(saleId, {
+    const updatedSale = await db.Sale.findByPk(saleId, {
       include: [{ association: "items" }],
-    })) as InstanceType<typeof db.Sale>;
+    });
     return updatedSale;
   } catch (err) {
     await t.rollback();
