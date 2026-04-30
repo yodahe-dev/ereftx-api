@@ -11,7 +11,7 @@ export enum HistoryActionType {
 interface StockHistoryAttributes {
   id: string;
   productId: string;
-  priceId: string; // <--- The 100x Link: Which price was active?
+  priceId: string;
   actionType: HistoryActionType;
 
   boxQuantityBefore: number;
