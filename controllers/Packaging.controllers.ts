@@ -79,7 +79,7 @@ export const createPackaging = async (req: Request, res: Response) => {
     }
 
     const packaging = await Packaging.create({
-      type, // ✅ now fully typed
+      name: type, // ✅ now fully typed
     });
 
     return res.status(201).json(packaging);
@@ -152,7 +152,7 @@ export const updatePackaging = async (req: Request, res: Response) => {
     }
 
     await item.update({
-      ...(type ? { type } : {}),
+      ...(type ? { name: type } : {}),
     });
 
     return res.status(200).json(item);

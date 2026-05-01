@@ -165,12 +165,6 @@ export const deleteBrand = async (
       });
     }
 
-    /**
-     * Security Note: 
-     * Because we set onDelete: "RESTRICT" in the associations, 
-     * Sequelize will throw an error if you try to delete a brand 
-     * that is still linked to products.
-     */
     await brand.destroy();
 
     return res.status(200).json({
