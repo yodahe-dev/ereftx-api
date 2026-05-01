@@ -3,7 +3,6 @@ import { HistoryActionType } from "../models/StockHistory";
 import type { Transaction } from "sequelize";
 import { CreateSaleInput, UpdateSaleInput } from "../validations/sale.schema";
 
-// Type aliases – using the attribute interfaces from model files for clarity
 interface Product {
   id: string;
   name: string;
@@ -32,10 +31,6 @@ interface ProcessedItem {
   priceId: string;
 }
 
-/**
- * Core helper – processes a single sale item by deducting/returning stock and
- * calculating prices. ALWAYS records StockHistory with the correct priceId.
- */
 async function processSaleItem(
   saleId: string,
   item: {

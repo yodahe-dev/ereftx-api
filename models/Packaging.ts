@@ -2,7 +2,7 @@ import { DataTypes, Model, Sequelize, Optional } from "sequelize";
 
 interface PackagingAttributes {
   id: string;
-  type: string;
+  name: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -17,7 +17,7 @@ export default (sequelize: Sequelize) => {
     extends Model<PackagingAttributes, PackagingCreationAttributes>
     implements PackagingAttributes {
     public id!: string;
-    public type!: string;
+    public name!: string;
     public readonly createdAt!: Date;
     public readonly updatedAt!: Date;
   }
@@ -30,7 +30,7 @@ export default (sequelize: Sequelize) => {
         primaryKey: true,
       },
 
-      type: {
+      name: {
         type: DataTypes.STRING,
         allowNull: false,
         unique: true,
@@ -45,7 +45,7 @@ export default (sequelize: Sequelize) => {
           },
         },
         set(value: string) {
-          this.setDataValue("type", value.trim());
+          this.setDataValue("name", value.trim());
         }
       },
     },
