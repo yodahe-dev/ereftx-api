@@ -1,16 +1,14 @@
 import db from "../models";
 import { Transaction } from "sequelize";
 
-const { Product, ProductPrice, sequelize } = db;
+const { Product, ProductPrice, sequelize, Brand } = db;
 
 /**
  * Creates a product **and always a corresponding active price**.
- * If no price data is provided, a zero‑price entry is inserted so stock operations
- * won’t break.
+ * The category is now inferred from the Brand, so categoryId is removed from here.
  */
 export const createProductService = async (data: {
   name: string;
-  categoryId: string;
   brandId: string;
   packagingId: string;
   unitsPerBox?: number;
@@ -21,10 +19,15 @@ export const createProductService = async (data: {
 }) => {
   const transaction: Transaction = await sequelize.transaction();
   try {
+    // Security Check: Ensure the brand exists before creating the product
+    const brand = await Brand.findByPk(data.brandId, { transaction });
+    if (!brand) {
+      throw new Error("Cannot create product: The specified Brand does not exist.");
+    }
+
     const product = await Product.create(
       {
         name: data.name,
-        categoryId: data.categoryId,
         brandId: data.brandId,
         packagingId: data.packagingId,
         unitsPerBox: data.unitsPerBox ?? 24,
@@ -53,11 +56,14 @@ export const createProductService = async (data: {
   }
 };
 
+/**
+ * Updates a product.
+ * Removed categoryId because the product inherits it from the Brand.
+ */
 export const updateProductService = async (
   productId: string,
   data: {
     name?: string;
-    categoryId?: string;
     brandId?: string;
     packagingId?: string;
     unitsPerBox?: number;
@@ -68,10 +74,15 @@ export const updateProductService = async (
     const product = await Product.findByPk(productId, { transaction });
     if (!product) throw new Error("Product not found");
 
+    // If changing the brand, verify the new brand exists
+    if (data.brandId && data.brandId !== product.brandId) {
+      const brandExists = await Brand.findByPk(data.brandId, { transaction });
+      if (!brandExists) throw new Error("The new Brand specified does not exist.");
+    }
+
     await product.update(
       {
         name: data.name ?? product.name,
-        categoryId: data.categoryId ?? product.categoryId,
         brandId: data.brandId ?? product.brandId,
         packagingId: data.packagingId ?? product.packagingId,
         unitsPerBox: data.unitsPerBox ?? product.unitsPerBox,
@@ -87,6 +98,9 @@ export const updateProductService = async (
   }
 };
 
+/**
+ * Adds a new price version and deactivates the old one.
+ */
 export const addProductPriceService = async (
   productId: string,
   data: {
@@ -101,7 +115,7 @@ export const addProductPriceService = async (
     const product = await Product.findByPk(productId, { transaction });
     if (!product) throw new Error("Product not found");
 
-    // Deactivate current active price
+    // Deactivate current active price (where endAt is null)
     await ProductPrice.update(
       { endAt: new Date() },
       { where: { productId, endAt: null }, transaction }
@@ -128,8 +142,15 @@ export const addProductPriceService = async (
 };
 
 export const deleteProductService = async (productId: string) => {
-  // no transaction needed for a simple delete (cascade will handle prices)
   const product = await Product.findByPk(productId);
   if (!product) throw new Error("Product not found");
-  await product.destroy();
+  
+  try {
+    await product.destroy();
+  } catch (error: any) {
+    if (error.name === "SequelizeForeignKeyConstraintError") {
+      throw new Error("Cannot delete product: It has existing sales or stock records.");
+    }
+    throw error;
+  }
 };

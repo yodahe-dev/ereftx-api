@@ -3,6 +3,7 @@ import { DataTypes, Model, Sequelize, Optional } from "sequelize";
 interface BrandAttributes {
   id: string;
   name: string;
+  categoryId: string; // Relationship added here
   createdAt?: Date;
   updatedAt?: Date;
   deletedAt?: Date | null;
@@ -20,6 +21,7 @@ export default (sequelize: Sequelize) => {
   {
     declare id: string;
     declare name: string;
+    declare categoryId: string;
 
     declare readonly createdAt: Date;
     declare readonly updatedAt: Date;
@@ -33,24 +35,29 @@ export default (sequelize: Sequelize) => {
         defaultValue: DataTypes.UUIDV4,
         primaryKey: true,
       },
-
       name: {
         type: DataTypes.STRING(100),
         allowNull: false,
-
         validate: {
-          notEmpty: {
-            msg: "Name is required",
-          },
+          notEmpty: { msg: "Brand name is required" },
           len: {
             args: [2, 100],
-            msg: "Name must be between 2 and 100 characters",
+            msg: "Brand name must be between 2 and 100 characters",
           },
         },
-
         set(value: string) {
           this.setDataValue("name", value.trim().toLowerCase());
         },
+      },
+      categoryId: {
+        type: DataTypes.UUID,
+        allowNull: false,
+        references: {
+          model: "categories",
+          key: "id",
+        },
+        onUpdate: "CASCADE",
+        onDelete: "RESTRICT", // Security: Prevent deleting category if brands exist
       },
     },
     {
@@ -58,7 +65,6 @@ export default (sequelize: Sequelize) => {
       tableName: "brands",
       timestamps: true,
       paranoid: true,
-
       indexes: [
         {
           unique: true,

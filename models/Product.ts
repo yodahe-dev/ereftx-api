@@ -3,7 +3,6 @@ import { DataTypes, Model, Sequelize, Optional } from "sequelize";
 interface ProductAttributes {
   id: string;
   name: string;
-  categoryId: string;
   brandId: string;
   packagingId: string;
   unitsPerBox: number;
@@ -23,11 +22,8 @@ export default (sequelize: Sequelize) => {
   {
     public id!: string;
     public name!: string;
-
-    public categoryId!: string;
     public brandId!: string;
     public packagingId!: string;
-
     public unitsPerBox!: number;
 
     public readonly createdAt!: Date;
@@ -41,7 +37,6 @@ export default (sequelize: Sequelize) => {
         defaultValue: DataTypes.UUIDV4,
         primaryKey: true,
       },
-
       name: {
         type: DataTypes.STRING(120),
         allowNull: false,
@@ -49,42 +44,32 @@ export default (sequelize: Sequelize) => {
           this.setDataValue("name", value.trim());
         },
       },
-
-      categoryId: {
-        type: DataTypes.UUID,
-        allowNull: false,
-        // FIXED: Added DB-level relationship
-        references: {
-          model: "categories",
-          key: "id",
-        },
-      },
-
       brandId: {
         type: DataTypes.UUID,
         allowNull: false,
-        // FIXED: Added DB-level relationship
         references: {
           model: "brands",
           key: "id",
         },
+        onUpdate: "CASCADE",
+        onDelete: "RESTRICT",
       },
-
       packagingId: {
         type: DataTypes.UUID,
         allowNull: false,
-        // FIXED: Added DB-level relationship
         references: {
           model: "packagings",
           key: "id",
         },
+        onUpdate: "CASCADE",
+        onDelete: "RESTRICT",
       },
-
       unitsPerBox: {
         type: DataTypes.INTEGER,
         allowNull: false,
         defaultValue: 24,
         validate: {
+          isInt: { msg: "Units per box must be an integer" },
           min: {
             args: [1],
             msg: "A box must contain at least 1 unit",

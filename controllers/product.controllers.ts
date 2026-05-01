@@ -15,7 +15,7 @@ import {
   addProductPriceSchema,
 } from "../validations/product.schema";
 
-const { Product, ProductPrice } = db;
+const { Product, ProductPrice, Brand, Category, Packaging } = db;
 
 /**
  * =====================
@@ -59,12 +59,29 @@ export const getProducts = async (req: Request, res: Response) => {
       offset,
       order: [["createdAt", "DESC"]],
       include: [
+        // Include the Brand AND its Category
+        {
+          model: Brand,
+          as: "brand",
+          include: [
+            {
+              model: Category,
+              as: "category",
+              attributes: ["id", "name"],
+            },
+          ],
+        },
+        {
+          model: Packaging,
+          as: "packaging",
+          attributes: ["id", "name"],
+        },
         {
           model: ProductPrice,
           as: "prices",
           required: false,
+          where: { endAt: null }, // Only get the currently active price
           limit: 1,
-          order: [["createdAt", "DESC"]],
         },
       ],
     });
@@ -92,8 +109,17 @@ export const getProductById = async (req: Request<{ id: string }>, res: Response
     if (!isUUID(id)) return res.status(400).json({ message: "Invalid ID" });
 
     const product = await Product.findByPk(id, {
-      include: [{ model: ProductPrice, as: "prices" }],
+      include: [
+        {
+          model: Brand,
+          as: "brand",
+          include: [{ model: Category, as: "category" }],
+        },
+        { model: Packaging, as: "packaging" },
+        { model: ProductPrice, as: "prices" }, // Return all price history for the detail view
+      ],
     });
+
     if (!product) return res.status(404).json({ message: "Not found" });
 
     return res.status(200).json(product);
