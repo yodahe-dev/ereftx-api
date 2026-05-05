@@ -3,8 +3,7 @@ import {
   createPackaging,
   getPackagings,
   updatePackaging,
-  deletePackaging,
-} from "../controllers/packaging.controllers"; // CORRECTED IMPORT
+} from "../controllers/packaging.controllers";
 
 const router = Router();
 
@@ -27,6 +26,5 @@ const wrap = <P, ResBody, ReqBody, ReqQuery>(
 router.post("/", wrap(createPackaging));
 router.get("/", wrap(getPackagings));
 router.put("/:id", wrap(updatePackaging));
-router.delete("/:id", wrap(deletePackaging));
 
 export default router;

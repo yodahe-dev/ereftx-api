@@ -132,24 +132,3 @@ export const updatePackaging = async (
   return res.status(200).json(item);
 };
 
-/**
- * DELETE PACKAGING
- */
-export const deletePackaging = async (
-  req: Request<ParamsWithId>,
-  res: Response
-): Promise<Response> => {
-  const { id } = req.params;
-
-  if (!isUUID(id)) {
-    return res.status(400).json({ message: "Invalid ID format" });
-  }
-
-  const item = await Packaging.findByPk(id);
-  if (!item) {
-    return res.status(404).json({ message: "Packaging not found" });
-  }
-
-  await item.destroy();
-  return res.status(200).json({ message: "Deleted successfully" });
-};
