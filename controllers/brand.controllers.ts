@@ -101,3 +101,64 @@ export const getBrands = async (req: Request, res: Response): Promise<Response> 
     return res.status(500).json({ message: "Internal server error" });
   }
 };
+
+export const updateBrand = async (
+  req: Request<ParamsWithId, {}, Partial<BrandInput>>,
+  res: Response
+): Promise<Response> => {
+  const { id } = req.params;
+
+  if (!isUUID(id)) {
+    return res.status(400).json({ message: "Invalid ID format" });
+  }
+
+  const parsed = BrandSchema.partial().safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ errors: parsed.error.flatten() });
+  }
+
+  const brand = await Brand.findByPk(id);
+  if (!brand) {
+    return res.status(404).json({ message: "Brand not found" });
+  }
+
+  if (parsed.data.name) {
+    const normalizedName = parsed.data.name.toLowerCase();
+    const conflict = await Brand.findOne({
+      where: { name: normalizedName, id: { [Op.ne]: id } },
+    });
+    if (conflict) {
+      return res.status(400).json({ message: "Brand name already in use" });
+    }
+    parsed.data.name = normalizedName;
+  }
+
+  await brand.update(parsed.data);
+  return res.status(200).json(brand);
+};
+
+/**
+ * DELETE BRAND
+ */
+export const deleteBrand = async (
+  req: Request<ParamsWithId>,
+  res: Response
+): Promise<Response> => {
+  const { id } = req.params;
+
+  if (!isUUID(id)) {
+    return res.status(400).json({ message: "Invalid ID format" });
+  }
+
+  const brand = await Brand.findByPk(id);
+  if (!brand) {
+    return res.status(404).json({ message: "Brand not found" });
+  }
+
+  await brand.destroy();
+  return res.status(200).json({ message: "Brand deleted successfully" });
+};
+
+function isUUID(id: string): boolean {
+  return z.string().uuid().safeParse(id).success;
+}
