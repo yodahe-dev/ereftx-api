@@ -21,7 +21,18 @@ const PORT = Number(process.env.PORT) || 9000;
  */
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || "http://localhost:3000",
+    origin: (origin, callback) => {
+      const allowedOrigins = process.env.CORS_ORIGIN 
+        ? process.env.CORS_ORIGIN.split(",") 
+        : ["http://localhost:3000"];
+      
+      // Check if the request origin is in the allowed list
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true,
   })
 );
@@ -46,6 +57,7 @@ app.use("/api/sales", Sales);
 app.get("/", (_req: Request, res: Response) => {
   res.status(200).send("EREFTX API running...");
 });
+
 /**
  * =====================
  * START SERVER
