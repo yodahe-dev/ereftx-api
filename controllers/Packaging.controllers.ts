@@ -1,64 +1,29 @@
-import db from "../models";
 import { Request, Response } from "express";
 import { z } from "zod";
 import { validate as isUUID } from "uuid";
+import { Op, WhereOptions } from "sequelize";
+import db from "../models";
 
 const { Packaging } = db;
 
-/**
- * =====================
- * ENUM (must match model)
- * =====================
- */
-export enum PackagingType {
-  BOTTLE = "bottle",
-  CAN = "can",
-  PLASTIC = "plastic",
-}
+const ALLOWED_LIMITS = [10, 30, 50] as const;
+const DEFAULT_LIMIT = 30;
 
-/**
- * =====================
- * SCHEMA
- * =====================
- */
 const PackagingSchema = z.object({
-  type: z.string().min(1),
+  name: z.string().trim().min(1, "Packaging name is required").max(50),
 });
 
-const UpdatePackagingSchema = PackagingSchema.partial();
+type PackagingInput = z.infer<typeof PackagingSchema>;
 
-/**
- * =====================
- * SAFE ID
- * =====================
- */
-const getId = (id: string | string[] | undefined): string | null => {
-  if (!id) return null;
-  if (Array.isArray(id)) return id[0] ?? null;
-  return id;
-};
+interface ParamsWithId {
+  id: string;
+}
 
-/**
- * =====================
- * NORMALIZE + VALIDATE ENUM
- * =====================
- */
-const parsePackagingType = (value: string): PackagingType | null => {
-  const normalized = value.trim().toLowerCase();
 
-  if (Object.values(PackagingType).includes(normalized as PackagingType)) {
-    return normalized as PackagingType;
-  }
-
-  return null;
-};
-
-/**
- * =====================
- * CREATE
- * =====================
- */
-export const createPackaging = async (req: Request, res: Response) => {
+export const createPackaging = async (
+  req: Request<{}, {}, PackagingInput>, 
+  res: Response
+): Promise<Response> => {
   try {
     const parsed = PackagingSchema.safeParse(req.body);
 
@@ -69,129 +34,148 @@ export const createPackaging = async (req: Request, res: Response) => {
       });
     }
 
-    const type = parsePackagingType(parsed.data.type);
+    const { name } = parsed.data;
+    const normalizedName = name.toLowerCase();
 
-    if (!type) {
-      return res.status(400).json({
-        message: "Invalid packaging type",
-        allowed: Object.values(PackagingType),
-      });
-    }
-
-    const packaging = await Packaging.create({
-      name: type, // ✅ now fully typed
+    // Check for existing/soft-deleted records
+    const existing = await Packaging.findOne({
+      where: { name: normalizedName },
+      paranoid: false,
     });
 
-    return res.status(201).json(packaging);
-  } catch (error: unknown) {
-    console.error("CREATE PACKAGING ERROR:", error);
-
-    return res.status(500).json({
-      message: "Internal server error",
-    });
-  }
-};
-
-/**
- * =====================
- * GET ALL
- * =====================
- */
-export const getPackagings = async (_: Request, res: Response) => {
-  try {
-    const data = await Packaging.findAll();
-    return res.status(200).json(data);
-  } catch (error: unknown) {
-    return res.status(500).json({
-      message: "Internal server error",
-    });
-  }
-};
-
-/**
- * =====================
- * UPDATE
- * =====================
- */
-export const updatePackaging = async (req: Request, res: Response) => {
-  try {
-    const id = getId(req.params.id);
-
-    if (!id || !isUUID(id)) {
-      return res.status(400).json({ message: "Invalid ID format" });
-    }
-
-    const parsed = UpdatePackagingSchema.safeParse(req.body);
-
-    if (!parsed.success) {
-      return res.status(400).json({
-        message: "Invalid input",
-        errors: parsed.error.flatten(),
-      });
-    }
-
-    const item = await Packaging.findByPk(id);
-
-    if (!item) {
-      return res.status(404).json({ message: "Not found" });
-    }
-
-    let type: PackagingType | undefined;
-
-    if (parsed.data.type) {
-      const parsedType = parsePackagingType(parsed.data.type);
-
-      if (!parsedType) {
-        return res.status(400).json({
-          message: "Invalid packaging type",
-          allowed: Object.values(PackagingType),
+    if (existing) {
+      if (existing.deletedAt) {
+        await existing.restore();
+        return res.status(200).json({
+          message: "Packaging type restored",
+          data: existing,
         });
       }
-
-      type = parsedType;
+      return res.status(400).json({ message: "This packaging type already exists" });
     }
 
-    await item.update({
-      ...(type ? { name: type } : {}),
-    });
-
-    return res.status(200).json(item);
-  } catch (error: unknown) {
-    console.error("UPDATE PACKAGING ERROR:", error);
-
-    return res.status(500).json({
-      message: "Internal server error",
-    });
+    const packaging = await Packaging.create({ name: normalizedName });
+    return res.status(201).json(packaging);
+  } catch (error) {
+    console.error("CREATE PACKAGING ERROR:", error);
+    return res.status(500).json({ message: "Internal server error" });
   }
 };
 
 /**
- * =====================
- * DELETE
- * =====================
+ * GET ALL (With Pagination & Search)
  */
-export const deletePackaging = async (req: Request, res: Response) => {
+export const getPackagings = async (req: Request, res: Response): Promise<Response> => {
   try {
-    const id = getId(req.params.id);
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    let limit = parseInt(req.query.limit as string) || DEFAULT_LIMIT;
+    
+    if (!ALLOWED_LIMITS.includes(limit as any)) {
+      limit = DEFAULT_LIMIT;
+    }
 
-    if (!id || !isUUID(id)) {
+    const search = (req.query.search as string || "").trim().toLowerCase();
+    const offset = (page - 1) * limit;
+
+    const whereClause: WhereOptions = {};
+    if (search) {
+      whereClause.name = { [Op.like]: `%${search}%` };
+    }
+
+    const { count, rows } = await Packaging.findAndCountAll({
+      where: whereClause,
+      order: [["name", "ASC"]],
+      limit,
+      offset,
+      raw: true,
+    });
+
+    return res.status(200).json({
+      data: rows,
+      meta: {
+        totalItems: count,
+        totalPages: Math.ceil(count / limit),
+        currentPage: page,
+        limit,
+      },
+    });
+  } catch (error) {
+    console.error("GET PACKAGINGS ERROR:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+/**
+ * UPDATE PACKAGING
+ */
+export const updatePackaging = async (
+  req: Request<ParamsWithId, {}, Partial<PackagingInput>>, 
+  res: Response
+): Promise<Response> => {
+  try {
+    const { id } = req.params;
+
+    if (!isUUID(id)) {
+      return res.status(400).json({ message: "Invalid ID format" });
+    }
+
+    const parsed = PackagingSchema.partial().safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ errors: parsed.error.flatten() });
+    }
+
+    const item = await Packaging.findByPk(id);
+    if (!item) {
+      return res.status(404).json({ message: "Packaging not found" });
+    }
+
+    // Uniqueness check for name update
+    if (parsed.data.name) {
+      const normalizedName = parsed.data.name.toLowerCase();
+      const nameConflict = await Packaging.findOne({
+        where: { name: normalizedName, id: { [Op.ne]: id } }
+      });
+      if (nameConflict) {
+        return res.status(400).json({ message: "Name already in use" });
+      }
+      parsed.data.name = normalizedName;
+    }
+
+    await item.update(parsed.data);
+    return res.status(200).json(item);
+  } catch (error) {
+    console.error("UPDATE PACKAGING ERROR:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+/**
+ * DELETE PACKAGING
+ */
+export const deletePackaging = async (
+  req: Request<ParamsWithId>, 
+  res: Response
+): Promise<Response> => {
+  try {
+    const { id } = req.params;
+
+    if (!isUUID(id)) {
       return res.status(400).json({ message: "Invalid ID format" });
     }
 
     const item = await Packaging.findByPk(id);
-
     if (!item) {
       return res.status(404).json({ message: "Not found" });
     }
 
     await item.destroy();
-
-    return res.status(200).json({ message: "Deleted" });
-  } catch (error: unknown) {
-    console.error("DELETE PACKAGING ERROR:", error);
-
-    return res.status(500).json({
-      message: "Internal server error",
-    });
+    return res.status(200).json({ message: "Deleted successfully" });
+  } catch (error: any) {
+    if (error.name === "SequelizeForeignKeyConstraintError") {
+      return res.status(400).json({
+        message: "Cannot delete: Packaging is linked to active products."
+      });
+    }
+    return res.status(500).json({ message: "Internal server error" });
   }
 };

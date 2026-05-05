@@ -1,11 +1,6 @@
 import { DataTypes, Model, Sequelize, Optional } from "sequelize";
 
-interface CategoryAttributes {
-  id: string;
-  name: string;
-  createdAt?: Date;
-  updatedAt?: Date;
-}
+interface CategoryAttributes { id: string; name: string; createdAt?: Date; updatedAt?: Date;}
 
 type CategoryCreationAttributes = Optional<
   CategoryAttributes,
@@ -17,6 +12,7 @@ export default (sequelize: Sequelize) => {
     extends Model<CategoryAttributes, CategoryCreationAttributes>
     implements CategoryAttributes
   {
+    [x: string]: any;
     public id!: string;
     public name!: string;
 

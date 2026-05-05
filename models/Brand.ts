@@ -3,7 +3,7 @@ import { DataTypes, Model, Sequelize, Optional } from "sequelize";
 interface BrandAttributes {
   id: string;
   name: string;
-  categoryId: string; // Relationship added here
+  categoryId: string;
   createdAt?: Date;
   updatedAt?: Date;
   deletedAt?: Date | null;
@@ -57,7 +57,7 @@ export default (sequelize: Sequelize) => {
           key: "id",
         },
         onUpdate: "CASCADE",
-        onDelete: "RESTRICT", // Security: Prevent deleting category if brands exist
+        onDelete: "RESTRICT",
       },
     },
     {

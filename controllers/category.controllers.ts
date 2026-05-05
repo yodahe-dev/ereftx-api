@@ -2,16 +2,16 @@ import db from "../models";
 import { Request, Response } from "express";
 import { z } from "zod";
 import { validate as isUUID } from "uuid";
+import { Op, WhereOptions } from "sequelize";
 
 const { Category } = db;
 
-/**
- * =====================
- * SCHEMA
- * =====================
- */
+
+const ALLOWED_LIMITS: number[] = [10, 30, 50, 100];
+const DEFAULT_LIMIT: number = 30;
+
 const CategorySchema = z.object({
-  name: z.string().min(1, "Name is required").trim(),
+  name: z.string().trim().min(1, "Category name is required"),
 });
 
 type CategoryInput = z.infer<typeof CategorySchema>;
@@ -20,11 +20,6 @@ interface ParamsWithId {
   id: string;
 }
 
-/**
- * =====================
- * CREATE CATEGORY
- * =====================
- */
 export const createCategory = async (
   req: Request<{}, {}, CategoryInput>,
   res: Response
@@ -39,45 +34,79 @@ export const createCategory = async (
       });
     }
 
-    const category = await Category.create(parsed.data);
+    const { name } = parsed.data;
+    const normalizedName = name.toLowerCase();
 
+    const existingCategory = await Category.findOne({
+      where: { name: normalizedName },
+      paranoid: false,
+    });
+
+    if (existingCategory) {
+      if (existingCategory.deletedAt) {
+        await existingCategory.restore();
+        return res.status(200).json({
+          message: "Category restored successfully",
+          data: existingCategory,
+        });
+      }
+      return res.status(400).json({
+        message: "A category with this name already exists",
+      });
+    }
+
+    const category = await Category.create(parsed.data);
     return res.status(201).json(category);
   } catch (error: unknown) {
     console.error("CREATE CATEGORY ERROR:", error);
-
-    return res.status(500).json({
-      message: "Internal server error",
-    });
+    return res.status(500).json({ message: "Internal server error" });
   }
 };
 
-/**
- * =====================
- * GET ALL
- * =====================
- */
 export const getCategories = async (
-  _: Request,
+  req: Request,
   res: Response
 ): Promise<Response> => {
   try {
-    const categories = await Category.findAll();
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    let limit = parseInt(req.query.limit as string) || DEFAULT_LIMIT;
 
-    return res.status(200).json(categories);
+    if (!ALLOWED_LIMITS.includes(limit)) {
+      limit = DEFAULT_LIMIT;
+    }
+
+    const search = (req.query.search as string || "").trim().toLowerCase();
+    const offset = (page - 1) * limit;
+
+    const whereClause: WhereOptions = {};
+    if (search) {
+      whereClause.name = { [Op.like]: `%${search}%` };
+    }
+
+    const { count, rows: categories } = await Category.findAndCountAll({
+      where: whereClause,
+      order: [["name", "ASC"]],
+      limit,
+      offset,
+      raw: true,
+    });
+
+    return res.status(200).json({
+      data: categories,
+      meta: {
+        totalItems: count,
+        totalPages: Math.ceil(count / limit),
+        currentPage: page,
+        limit,
+        allowedLimits: ALLOWED_LIMITS,
+      },
+    });
   } catch (error: unknown) {
     console.error("GET CATEGORIES ERROR:", error);
-
-    return res.status(500).json({
-      message: "Internal server error",
-    });
+    return res.status(500).json({ message: "Internal server error" });
   }
 };
 
-/**
- * =====================
- * GET BY ID
- * =====================
- */
 export const getCategoryById = async (
   req: Request<ParamsWithId>,
   res: Response
@@ -86,34 +115,22 @@ export const getCategoryById = async (
     const { id } = req.params;
 
     if (!isUUID(id)) {
-      return res.status(400).json({
-        message: "Invalid ID format",
-      });
+      return res.status(400).json({ message: "Invalid ID format" });
     }
 
     const category = await Category.findByPk(id);
 
     if (!category) {
-      return res.status(404).json({
-        message: "Category not found",
-      });
+      return res.status(404).json({ message: "Category not found" });
     }
 
     return res.status(200).json(category);
   } catch (error: unknown) {
     console.error("GET CATEGORY ERROR:", error);
-
-    return res.status(500).json({
-      message: "Internal server error",
-    });
+    return res.status(500).json({ message: "Internal server error" });
   }
 };
 
-/**
- * =====================
- * UPDATE
- * =====================
- */
 export const updateCategory = async (
   req: Request<ParamsWithId, {}, Partial<CategoryInput>>,
   res: Response
@@ -122,9 +139,7 @@ export const updateCategory = async (
     const { id } = req.params;
 
     if (!isUUID(id)) {
-      return res.status(400).json({
-        message: "Invalid ID format",
-      });
+      return res.status(400).json({ message: "Invalid ID format" });
     }
 
     const parsed = CategorySchema.partial().safeParse(req.body);
@@ -139,28 +154,29 @@ export const updateCategory = async (
     const category = await Category.findByPk(id);
 
     if (!category) {
-      return res.status(404).json({
-        message: "Category not found",
+      return res.status(404).json({ message: "Category not found" });
+    }
+
+    if (parsed.data.name) {
+      const nameExists = await Category.findOne({
+        where: { 
+          name: parsed.data.name.toLowerCase(),
+          id: { [Op.ne]: id }
+        }
       });
+      if (nameExists) {
+        return res.status(400).json({ message: "Category name already in use" });
+      }
     }
 
     await category.update(parsed.data);
-
     return res.status(200).json(category);
   } catch (error: unknown) {
     console.error("UPDATE CATEGORY ERROR:", error);
-
-    return res.status(500).json({
-      message: "Internal server error",
-    });
+    return res.status(500).json({ message: "Internal server error" });
   }
 };
 
-/**
- * =====================
- * DELETE
- * =====================
- */
 export const deleteCategory = async (
   req: Request<ParamsWithId>,
   res: Response
@@ -169,17 +185,13 @@ export const deleteCategory = async (
     const { id } = req.params;
 
     if (!isUUID(id)) {
-      return res.status(400).json({
-        message: "Invalid ID format",
-      });
+      return res.status(400).json({ message: "Invalid ID format" });
     }
 
     const category = await Category.findByPk(id);
 
     if (!category) {
-      return res.status(404).json({
-        message: "Category not found",
-      });
+      return res.status(404).json({ message: "Category not found" });
     }
 
     await category.destroy();
@@ -187,11 +199,15 @@ export const deleteCategory = async (
     return res.status(200).json({
       message: "Deleted successfully",
     });
-  } catch (error: unknown) {
+  } catch (error: any) {
     console.error("DELETE CATEGORY ERROR:", error);
 
-    return res.status(500).json({
-      message: "Internal server error",
-    });
+    if (error.name === "SequelizeForeignKeyConstraintError") {
+      return res.status(400).json({
+        message: "Cannot delete category while brands are still linked to it.",
+      });
+    }
+
+    return res.status(500).json({ message: "Internal server error" });
   }
 };

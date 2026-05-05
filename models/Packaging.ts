@@ -17,6 +17,7 @@ export default (sequelize: Sequelize) => {
     extends Model<PackagingAttributes, PackagingCreationAttributes>
     implements PackagingAttributes
   {
+    [x: string]: any;
     public id!: string;
     public name!: string;
     public readonly createdAt!: Date;
