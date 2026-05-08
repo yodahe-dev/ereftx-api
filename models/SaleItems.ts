@@ -24,7 +24,6 @@ export type SaleItemCreationAttributes = Optional<
   "id" | "createdAt" | "updatedAt" | "totalUnits"
 >;
 
-// ✅ EXPORT CLASS (IMPORTANT FOR TYPES)
 export class SaleItem
   extends Model<SaleItemAttributes, SaleItemCreationAttributes>
   implements SaleItemAttributes
@@ -45,7 +44,6 @@ export class SaleItem
   public readonly updatedAt!: Date;
 }
 
-// ✅ DEFAULT EXPORT (SEQUELIZE INIT)
 export default (sequelize: Sequelize) => {
   SaleItem.init(
     {

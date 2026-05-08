@@ -32,8 +32,11 @@ import initCategory from "./Category";
 import initPackaging from "./Packaging";
 import initExchange from "./Exchange";
 import initStockHistory from "./StockHistory";
+import initBox from "./Box";
+import initBoxBoxTransactions from "./BoxTransactions";
+import initBoxTransactionsItems from "./BoxTransactionItems";
 
-// Initialize models
+
 const Product = initProduct(sequelize);
 const ProductPrice = initProductPrice(sequelize);
 const Stock = initStock(sequelize);
@@ -44,8 +47,12 @@ const Category = initCategory(sequelize);
 const Packaging = initPackaging(sequelize);
 const Exchange = initExchange(sequelize);
 const StockHistory = initStockHistory(sequelize);
+const Box = initBox(sequelize);
+const BoxTransactions = initBoxBoxTransactions(sequelize);
+const BoxTransactionItems = initBoxTransactionsItems(sequelize);
 
-// Type Export for use in other files
+
+
 export const models = {
   Product,
   ProductPrice,
@@ -57,6 +64,9 @@ export const models = {
   Packaging,
   Exchange,
   StockHistory,
+  Box,
+  BoxTransactions,
+  BoxTransactionItems,
 };
 
 export interface DB {
@@ -71,6 +81,9 @@ export interface DB {
   Packaging: typeof Packaging;
   Exchange: typeof Exchange;
   StockHistory: typeof StockHistory;
+  Box: typeof Box;
+  BoxTransactions: typeof BoxTransactions;
+  BoxTransactionItems: typeof BoxTransactionItems;
 }
 
 const db: DB = {
@@ -78,12 +91,6 @@ const db: DB = {
   ...models,
 };
 
-// ===== ASSOCIATIONS =====
-
-/**
- * BRAND & CATEGORY HIERARCHY (The Change)
- * Now Brand belongs to Category, and Product only cares about Brand.
- */
 db.Brand.belongsTo(db.Category, { 
   foreignKey: "categoryId", 
   as: "category",
@@ -94,10 +101,6 @@ db.Category.hasMany(db.Brand, {
   as: "brands" 
 });
 
-/**
- * PRODUCT CORE
- * Note: Removed Product.belongsTo(Category) because it's now redundant.
- */
 db.Product.belongsTo(db.Brand, { 
   foreignKey: "brandId", 
   as: "brand",
@@ -141,9 +144,6 @@ db.Stock.belongsTo(db.Product, {
   as: "product" 
 });
 
-/**
- * SALES & ITEMS
- */
 db.Sale.hasMany(db.SaleItem, { 
   foreignKey: "saleId", 
   as: "items", 
@@ -163,15 +163,11 @@ db.Product.hasMany(db.SaleItem, {
   as: "sales" 
 });
 
-// The Financial Link: Link SaleItem to the Price version used
 db.SaleItem.belongsTo(db.ProductPrice, { 
   foreignKey: "priceId", 
   as: "priceVersion" 
 });
 
-/**
- * HISTORY & AUDIT
- */
 db.Product.hasMany(db.StockHistory, { 
   foreignKey: "productId", 
   as: "stockHistory" 
@@ -190,9 +186,6 @@ db.StockHistory.belongsTo(db.ProductPrice, {
   as: "price" 
 });
 
-/**
- * EXCHANGES (Double-Product Relationship)
- */
 db.Exchange.belongsTo(db.Product, { 
   foreignKey: "sourceProductId", 
   as: "sourceProduct" 
@@ -202,14 +195,49 @@ db.Exchange.belongsTo(db.Product, {
   as: "targetProduct" 
 });
 
-// Financial link for Exchange
 db.Exchange.belongsTo(db.ProductPrice, { 
   foreignKey: "sourcePriceId", 
   as: "sourcePrice" 
 });
+
 db.Exchange.belongsTo(db.ProductPrice, { 
   foreignKey: "targetPriceId", 
   as: "targetPrice" 
+});
+
+db.Box.belongsTo(db.Category, {
+  foreignKey: "categoryId",
+  as: "category",
+  onDelete: "RESTRICT",
+});
+
+db.Category.hasMany(db.Box, {
+  foreignKey: "categoryId",
+  as: "boxes",
+});
+
+
+db.BoxTransactionItems.belongsTo(db.BoxTransactions, {
+  foreignKey: "boxTransactionId",
+  as: "transaction",
+  onDelete: "CASCADE",
+});
+
+db.BoxTransactions.hasMany(db.BoxTransactionItems, {
+  foreignKey: "boxTransactionId",
+  as: "items",
+});
+
+
+db.BoxTransactionItems.belongsTo(db.Box, {
+  foreignKey: "boxId",
+  as: "box",
+  onDelete: "CASCADE",
+});
+
+db.Box.hasMany(db.BoxTransactionItems, {
+  foreignKey: "boxId",
+  as: "transactionItems",
 });
 
 export default db;
