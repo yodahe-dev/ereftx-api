@@ -4,7 +4,7 @@ import {
   getBrands,
   updateBrand,
   deleteBrand,
-} from "../controllers/brand.controllers";
+} from "../modules/brand/brand.controllers";
 
 /**
  * =====================

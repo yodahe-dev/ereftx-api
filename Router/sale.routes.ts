@@ -5,7 +5,7 @@ import {
   getSaleById,
   updateSale,
   deleteSale,
-} from "../controllers/sale.controller";
+} from "../modules/sales/sale.controller";
 
 const router = Router();
 

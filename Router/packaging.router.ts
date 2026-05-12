@@ -3,7 +3,7 @@ import {
   createPackaging,
   getPackagings,
   updatePackaging,
-} from "../controllers/packaging.controllers";
+} from "../modules/packaging/packaging.controllers";
 
 const router = Router();
 

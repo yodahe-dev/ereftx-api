@@ -25,3 +25,11 @@ export const updateSaleSchema = z.object({
 
 export type CreateSaleInput = z.infer<typeof createSaleSchema>;
 export type UpdateSaleInput = z.infer<typeof updateSaleSchema>;
+
+export function createSale(validated: { customerName: string; paymentType: "cash" | "credit"; paymentStatus: "paid" | "pending"; items: { productId: string; quantity: number; unitType: "box" | "single"; customUnitPrice?: number | undefined; }[]; description?: string | null | undefined; }) {
+  throw new Error("Function not implemented.");
+}
+export function updateSale(saleId: string, validated: { customerName?: string | undefined; description?: string | null | undefined; paymentType?: "cash" | "credit" | undefined; paymentStatus?: "paid" | "pending" | undefined; items?: { productId: string; quantity: number; unitType: "box" | "single"; customUnitPrice?: number | undefined; }[] | undefined; }) {
+  throw new Error("Function not implemented.");
+}
+

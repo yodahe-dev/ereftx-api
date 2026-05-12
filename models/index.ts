@@ -205,6 +205,7 @@ db.Exchange.belongsTo(db.ProductPrice, {
   as: "targetPrice" 
 });
 
+
 db.Box.belongsTo(db.Category, {
   foreignKey: "categoryId",
   as: "category",

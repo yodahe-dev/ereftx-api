@@ -8,6 +8,9 @@ import BrandRouter from "./Router/brand.router";
 import ProductRouter from "./Router/product.router";
 import stcokRouter from "./Router/stock.router";
 import Sales from "./Router/sale.routes";
+import boxTransactionsRouter from "./Router/boxTransactions.router";
+import boxRouter from "./Router/box.router";
+
 
 dotenv.config();
 
@@ -25,8 +28,6 @@ app.use(
       const allowedOrigins = process.env.CORS_ORIGIN 
         ? process.env.CORS_ORIGIN.split(",") 
         : ["http://localhost:3000"];
-      
-      // Check if the request origin is in the allowed list
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
@@ -50,6 +51,8 @@ app.use("/api/packagings", PackagingRouter);
 app.use("/api/products", ProductRouter);
 app.use("/api/stocks", stcokRouter);
 app.use("/api/sales", Sales);
+app.use("/api/box-transactions", boxTransactionsRouter);
+app.use("/api/boxes", boxRouter);
 
 /**
  * HEALTH CHECK

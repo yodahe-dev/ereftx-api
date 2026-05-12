@@ -1,19 +1,19 @@
 import { Request, Response } from "express";
 import { z } from "zod";
 import { validate as isUUID } from "uuid";
-import db from "../models";
+import db from "../../models";
 import {
   createStockService,
   restockService,
   updateStockService,
-} from "../service/stock.service";
-import { processExchangeService } from "../service/exchange.service";
+} from "./stock.service";
+import { processExchangeService } from "./exchange.service";
 import {
   createStockSchema,
   updateStockSchema,
   restockSchema,
   exchangeSchema,
-} from "../validations/stock.schema";
+} from "./stock.schema";
 
 const { Stock, Product, Exchange, StockHistory } = db;
 

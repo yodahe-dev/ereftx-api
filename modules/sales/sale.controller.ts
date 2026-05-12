@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
-import * as saleService from "../service/sales.service";
-import { createSaleSchema, updateSaleSchema } from "../validations/sale.schema";
+import * as saleService from "./sale.schema";
+import { createSaleSchema, updateSaleSchema } from "./sale.schema";
 import { z } from "zod";
-import db from "../models";
+import db from "../../models";
 
 export const createSale = async (req: Request, res: Response) => {
   try {
@@ -66,8 +66,6 @@ export const deleteSale = async (req: Request, res: Response) => {
     const sale = await db.Sale.findByPk(saleId);
     if (!sale)
       return res.status(404).json({ success: false, message: "Not found" });
-    // Note: Deleting a sale does NOT automatically return stock.
-    // That's a business decision you may want to add later.
     await sale.destroy();
     return res.json({ success: true, message: "Sale deleted" });
   } catch (err: any) {

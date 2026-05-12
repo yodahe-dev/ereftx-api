@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ContainerType } from "../models/Stock";
+import { ContainerType } from "../../models/Stock";
 
 export const createStockSchema = z.object({
   productId: z.string().uuid(),

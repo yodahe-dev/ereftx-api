@@ -1,6 +1,6 @@
-import db from "../models";
-import { HistoryActionType } from "../models/StockHistory";
-import { calculateUnits } from "../utils/inventory.utils";
+import db from "../../models";
+import { HistoryActionType } from "../../models/StockHistory";
+import { calculateUnits } from "./inventory.utils";
 
 const { Stock, Product, ProductPrice, StockHistory, sequelize } = db;
 

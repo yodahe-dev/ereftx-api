@@ -36,6 +36,7 @@ export class BoxTransactionItemsItem
     public price!: number;
     public readonly createdAt!: Date;
     public readonly updatedAt!: Date;
+    box: any;
   }
 
 export default (sequelize: Sequelize) => {

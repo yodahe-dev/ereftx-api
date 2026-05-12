@@ -2,18 +2,18 @@ import { Request, Response } from "express";
 import { z } from "zod";
 import { validate as isUUID } from "uuid";
 import { Op } from "sequelize";
-import db from "../models";
+import db from "../../models";
 import {
   createProductService,
   updateProductService,
   addProductPriceService,
   deleteProductService,
-} from "../service/product.service";
+} from "../products/product.service";
 import {
   createProductSchema,
   updateProductSchema,
   addProductPriceSchema,
-} from "../validations/product.schema";
+} from "../products/product.schema";
 
 const { Product, ProductPrice, Brand, Category, Packaging } = db;
 

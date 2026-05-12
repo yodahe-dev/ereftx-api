@@ -1,7 +1,7 @@
-import db from "../models";
-import { HistoryActionType } from "../models/StockHistory";
+import db from "../../models";
+import { HistoryActionType } from "../../models/StockHistory";
 import type { Transaction } from "sequelize";
-import { CreateSaleInput, UpdateSaleInput } from "../validations/sale.schema";
+import { CreateSaleInput, UpdateSaleInput } from "./sale.schema";
 
 interface Product {
   id: string;

@@ -1,5 +1,5 @@
 import { Op, WhereOptions } from "sequelize";
-import db from "../models";
+import db from "../../models";
 import { Request, Response } from "express";
 import { z } from "zod";
 

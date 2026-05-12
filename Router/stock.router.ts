@@ -9,7 +9,7 @@ import {
   getExchangeHistory,
   restockProduct,
   getStockHistory,
-} from "../controllers/stock.controllers";
+} from "../modules/stocks/stock.controllers";
 
 const router = Router();
 

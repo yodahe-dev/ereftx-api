@@ -6,7 +6,7 @@ import {
   getCategoryById,
   updateCategory,
   deleteCategory,
-} from "../controllers/category.controllers";
+} from "../modules/category/category.controllers";
 
 /**
  * =====================

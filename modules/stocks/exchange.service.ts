@@ -1,8 +1,7 @@
-import db from "../models";
-import { HistoryActionType } from "../models/StockHistory";
-import { ContainerType } from "../models/Stock";
-import { calculateUnits } from "../utils/inventory.utils";
-
+import db from "../../models";
+import { ContainerType } from "../../models/Stock";
+import { HistoryActionType } from "../../models/StockHistory";
+import { calculateUnits } from "./inventory.utils";
 const { Stock, Product, ProductPrice, Exchange, StockHistory, sequelize } = db;
 
 export interface ExchangeDTO {

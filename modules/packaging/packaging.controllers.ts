@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { z } from "zod";
 import { validate as isUUID } from "uuid";
 import { Op, WhereOptions } from "sequelize";
-import db from "../models";
+import db from "../../models";
 
 const { Packaging } = db;
 
