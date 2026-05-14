@@ -45,6 +45,7 @@ app.use(express.json());
  * ROUTES
  * =====================
  */
+
 app.use("/api/categories", CategoryRouter);
 app.use("/api/brands", BrandRouter);
 app.use("/api/packagings", PackagingRouter);

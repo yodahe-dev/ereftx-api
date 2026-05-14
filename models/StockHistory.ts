@@ -41,6 +41,12 @@ export default (sequelize: Sequelize) => {
     extends Model<StockHistoryAttributes, StockHistoryCreationAttributes>
     implements StockHistoryAttributes
   {
+    totalSingleSold(totalSingleSold: any) {
+      throw new Error("Method not implemented.");
+    }
+    totalBoxSold(totalBoxSold: any) {
+      throw new Error("Method not implemented.");
+    }
     public id!: string;
     public productId!: string;
     public priceId!: string;

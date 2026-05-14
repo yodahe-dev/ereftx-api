@@ -29,6 +29,7 @@ export default (sequelize: Sequelize) => {
     public startAt!: Date;
     public endAt!: Date | null;
     public allowLoss!: boolean;
+    price: any;
   }
 
   ProductPrice.init(

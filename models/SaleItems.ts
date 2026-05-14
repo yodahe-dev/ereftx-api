@@ -42,6 +42,7 @@ export class SaleItem
   public totalCost!: number;
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
+    product: any;
 }
 
 export default (sequelize: Sequelize) => {

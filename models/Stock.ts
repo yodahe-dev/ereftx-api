@@ -33,6 +33,7 @@ export default (sequelize: Sequelize) => {
 
     public readonly createdAt!: Date;
     public readonly updatedAt!: Date;
+    product: any;
   }
 
   Stock.init(
@@ -45,7 +46,7 @@ export default (sequelize: Sequelize) => {
       productId: {
         type: DataTypes.UUID,
         allowNull: false,
-        unique: true, // A product only ever has ONE stock row
+        unique: true,
         references: {
           model: "products",
           key: "id",
