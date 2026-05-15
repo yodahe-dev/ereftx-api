@@ -12,7 +12,7 @@ export const sequelize = new Sequelize(
     host: process.env.DB_HOST as string,
     dialect: "mysql",
     logging: false,
-    timezone: "+03:00",
+    timezone: "+03:00",               // Ethiopia time
     pool: {
       max: 5,
       min: 0,
@@ -46,6 +46,7 @@ import initIncome from "./Income";
 import initLoan from "./Loan";
 import initCustomerDeposit from "./CustomerDeposit";
 import initSavingsGoal from "./SavingsGoal";
+import initBankTransaction from "./BankTransaction";      // <-- ADDED
 
 // ---------- Initialize ALL models ----------
 const Product = initProduct(sequelize);
@@ -71,6 +72,7 @@ const Income = initIncome(sequelize);
 const Loan = initLoan(sequelize);
 const CustomerDeposit = initCustomerDeposit(sequelize);
 const SavingsGoal = initSavingsGoal(sequelize);
+const BankTransaction = initBankTransaction(sequelize);
 
 // ---------- Export all ----------
 export const models = {
@@ -78,6 +80,7 @@ export const models = {
   Exchange, StockHistory, Box, BoxTransactions, BoxTransactionItems,
   // new
   BankAccount, Customer, Credit, Expense, Income, Loan, CustomerDeposit, SavingsGoal,
+  BankTransaction,   // <-- ADDED
 };
 
 export interface DB {
@@ -104,6 +107,7 @@ export interface DB {
   Loan: typeof Loan;
   CustomerDeposit: typeof CustomerDeposit;
   SavingsGoal: typeof SavingsGoal;
+  BankTransaction: typeof BankTransaction;   // <-- ADDED
 }
 
 const db: DB = { sequelize, ...models } as any;
@@ -189,5 +193,9 @@ db.Expense.belongsTo(db.Loan, { foreignKey: "loanId", as: "loan" });
 // 2. SavingsGoal -> BankAccount
 db.SavingsGoal.belongsTo(db.BankAccount, { foreignKey: "bankAccountId", as: "account" });
 db.BankAccount.hasMany(db.SavingsGoal, { foreignKey: "bankAccountId", as: "savingsGoals" });
+
+// 3. BankTransaction -> BankAccount (NEW)
+db.BankTransaction.belongsTo(db.BankAccount, { foreignKey: "bankAccountId", as: "account" });
+db.BankAccount.hasMany(db.BankTransaction, { foreignKey: "bankAccountId", as: "transactions" });
 
 export default db;

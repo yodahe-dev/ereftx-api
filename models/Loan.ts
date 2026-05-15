@@ -95,6 +95,7 @@ export default (sequelize: Sequelize) => {
         defaultValue: 0,
         comment: "Annual interest rate in percent",
       },
+      
       startDate: {
         type: DataTypes.DATE,
         allowNull: false,
