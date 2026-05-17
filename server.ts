@@ -11,16 +11,7 @@ import Sales from "./Router/sale.routes";
 import boxTransactionsRouter from "./Router/boxTransactions.router";
 import boxRouter from "./Router/box.router";
 
-// New emplmentations for finance module
-import bankAccountRouter from './Router/bankAccount.router';
-import expenseRouter from './Router/expense.router';
-import incomeRouter from './Router/income.router';
-import bankTransactionRouter from './Router/bankTransaction.router';
-import creditRouter from './Router/credit.router';
-import loanRouter from './Router/loan.router';
-import customerDepositRouter from './Router/customerDeposit.router';
-import savingsGoalRouter from './Router/savingsGoal.router';
-import customerRouter from './Router/customer.router';
+
 
 dotenv.config();
 
@@ -64,18 +55,6 @@ app.use("/api/stocks", stcokRouter);
 app.use("/api/sales", Sales);
 app.use("/api/box-transactions", boxTransactionsRouter);
 app.use("/api/boxes", boxRouter);
-app.use("/api/bank-accounts", bankAccountRouter);
-
-// The New Emplementations for finance module
-app.use('/api/bank-accounts', bankAccountRouter);
-app.use('/api/expenses', expenseRouter);
-app.use('/api/incomes', incomeRouter);
-app.use('/api/bank-transactions', bankTransactionRouter);
-app.use('/api/credits', creditRouter);
-app.use('/api/loans', loanRouter);
-app.use('/api/deposits', customerDepositRouter);
-app.use('/api/goals', savingsGoalRouter);
-app.use('/api/customers', customerRouter);
 
 /**
  * HEALTH CHECK

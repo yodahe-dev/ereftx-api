@@ -37,16 +37,7 @@ import initBox from "./Box";
 import initBoxBoxTransactions from "./BoxTransactions";
 import initBoxTransactionsItems from "./BoxTransactionItems";
 
-// ---------- NEW model imports ----------
-import initBankAccount from "./BankAccount";
-import initCustomer from "./Customer";
-import initCredit from "./Credit";
-import initExpense from "./Expense";
-import initIncome from "./Income";
-import initLoan from "./Loan";
-import initCustomerDeposit from "./CustomerDeposit";
-import initSavingsGoal from "./SavingsGoal";
-import initBankTransaction from "./BankTransaction";      // <-- ADDED
+
 
 // ---------- Initialize ALL models ----------
 const Product = initProduct(sequelize);
@@ -63,24 +54,12 @@ const Box = initBox(sequelize);
 const BoxTransactions = initBoxBoxTransactions(sequelize);
 const BoxTransactionItems = initBoxTransactionsItems(sequelize);
 
-// New models
-const BankAccount = initBankAccount(sequelize);
-const Customer = initCustomer(sequelize);
-const Credit = initCredit(sequelize);
-const Expense = initExpense(sequelize);
-const Income = initIncome(sequelize);
-const Loan = initLoan(sequelize);
-const CustomerDeposit = initCustomerDeposit(sequelize);
-const SavingsGoal = initSavingsGoal(sequelize);
-const BankTransaction = initBankTransaction(sequelize);
+
 
 // ---------- Export all ----------
 export const models = {
   Product, ProductPrice, Stock, Sale, SaleItem, Brand, Category, Packaging,
   Exchange, StockHistory, Box, BoxTransactions, BoxTransactionItems,
-  // new
-  BankAccount, Customer, Credit, Expense, Income, Loan, CustomerDeposit, SavingsGoal,
-  BankTransaction,   // <-- ADDED
 };
 
 export interface DB {
@@ -98,16 +77,6 @@ export interface DB {
   Box: typeof Box;
   BoxTransactions: typeof BoxTransactions;
   BoxTransactionItems: typeof BoxTransactionItems;
-  // new
-  BankAccount: typeof BankAccount;
-  Customer: typeof Customer;
-  Credit: typeof Credit;
-  Expense: typeof Expense;
-  Income: typeof Income;
-  Loan: typeof Loan;
-  CustomerDeposit: typeof CustomerDeposit;
-  SavingsGoal: typeof SavingsGoal;
-  BankTransaction: typeof BankTransaction;   // <-- ADDED
 }
 
 const db: DB = { sequelize, ...models } as any;
@@ -155,47 +124,5 @@ db.BoxTransactions.hasMany(db.BoxTransactionItems, { foreignKey: "boxTransaction
 
 db.BoxTransactionItems.belongsTo(db.Box, { foreignKey: "boxId", as: "box", onDelete: "CASCADE" });
 db.Box.hasMany(db.BoxTransactionItems, { foreignKey: "boxId", as: "transactionItems" });
-
-// ==================== PREVIOUS NEW ASSOCIATIONS ====================
-db.Customer.hasMany(db.Credit, { foreignKey: "customerId", as: "credits" });
-db.Credit.belongsTo(db.Customer, { foreignKey: "customerId", as: "customer" });
-
-db.Credit.belongsTo(db.Sale, { foreignKey: "saleId", as: "sale" });
-db.Sale.hasMany(db.Credit, { foreignKey: "saleId", as: "credits" });
-
-db.BankAccount.hasMany(db.Expense, { foreignKey: "bankAccountId", as: "expenses" });
-db.Expense.belongsTo(db.BankAccount, { foreignKey: "bankAccountId", as: "account" });
-
-db.BankAccount.hasMany(db.Income, { foreignKey: "bankAccountId", as: "incomes" });
-db.Income.belongsTo(db.BankAccount, { foreignKey: "bankAccountId", as: "account" });
-
-db.Income.belongsTo(db.Sale, { foreignKey: "referenceId", as: "sale", constraints: false });
-db.Sale.hasMany(db.Income, { foreignKey: "referenceId", as: "incomes", constraints: false });
-
-db.Loan.belongsTo(db.BankAccount, { foreignKey: "bankAccountId", as: "account" });
-db.BankAccount.hasMany(db.Loan, { foreignKey: "bankAccountId", as: "loans" });
-
-db.Loan.belongsTo(db.Customer, { foreignKey: "counterpartyId", as: "customer", constraints: false });
-db.Customer.hasMany(db.Loan, { foreignKey: "counterpartyId", as: "loans", constraints: false });
-
-db.CustomerDeposit.belongsTo(db.Customer, { foreignKey: "customerId", as: "customer" });
-db.Customer.hasMany(db.CustomerDeposit, { foreignKey: "customerId", as: "deposits" });
-
-db.CustomerDeposit.belongsTo(db.Sale, { foreignKey: "relatedSaleId", as: "sale" });
-db.Sale.hasMany(db.CustomerDeposit, { foreignKey: "relatedSaleId", as: "deposits" });
-
-// ==================== NEWEST ASSOCIATIONS ====================
-
-// 1. Loan -> Expense (loan can fund an expense)
-db.Loan.hasMany(db.Expense, { foreignKey: "loanId", as: "fundedExpenses" });
-db.Expense.belongsTo(db.Loan, { foreignKey: "loanId", as: "loan" });
-
-// 2. SavingsGoal -> BankAccount
-db.SavingsGoal.belongsTo(db.BankAccount, { foreignKey: "bankAccountId", as: "account" });
-db.BankAccount.hasMany(db.SavingsGoal, { foreignKey: "bankAccountId", as: "savingsGoals" });
-
-// 3. BankTransaction -> BankAccount (NEW)
-db.BankTransaction.belongsTo(db.BankAccount, { foreignKey: "bankAccountId", as: "account" });
-db.BankAccount.hasMany(db.BankTransaction, { foreignKey: "bankAccountId", as: "transactions" });
 
 export default db;

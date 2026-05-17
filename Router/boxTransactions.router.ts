@@ -1,5 +1,5 @@
 import { Router } from "express";
-import boxTransactionsController from "../modules/BoxTransactions/boxTransactions.controllers";
+import boxTransactionsController from "../modules/BoxTransactions/BoxTransactions.controllers";
 
 const router = Router();
 
