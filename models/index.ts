@@ -45,7 +45,22 @@ const Packaging = initPackaging(sequelize);
 const Exchange = initExchange(sequelize);
 const StockHistory = initStockHistory(sequelize);
 
-// Type Export for use in other files
+// Import Expense-related models
+import initExpenseCategory from "./ExpenseCategory";
+import initRecurringExpense from "./RecurringExpense";
+import initExpensePlan from "./ExpensePlan";
+import initExpense from "./Expense";
+// ADDED THIS IMPORT:
+import initRecurringExpenseLastGenerated from "./RecurringExpenseLastGenerated"; 
+
+// Initialize Expense models
+const ExpenseCategory = initExpenseCategory(sequelize);
+const RecurringExpense = initRecurringExpense(sequelize);
+const ExpensePlan = initExpensePlan(sequelize);
+const Expense = initExpense(sequelize);
+// ADDED THIS INITIALIZATION:
+const RecurringExpenseLastGenerated = initRecurringExpenseLastGenerated(sequelize); 
+
 export const models = {
   Product,
   ProductPrice,
@@ -57,6 +72,11 @@ export const models = {
   Packaging,
   Exchange,
   StockHistory,
+  ExpenseCategory,
+  RecurringExpense,
+  ExpensePlan,
+  Expense,
+  RecurringExpenseLastGenerated // ADDED HERE
 };
 
 export interface DB {
@@ -71,6 +91,11 @@ export interface DB {
   Packaging: typeof Packaging;
   Exchange: typeof Exchange;
   StockHistory: typeof StockHistory;
+  ExpenseCategory: typeof ExpenseCategory;
+  RecurringExpense: typeof RecurringExpense;
+  ExpensePlan: typeof ExpensePlan;
+  Expense: typeof Expense;
+  RecurringExpenseLastGenerated: typeof RecurringExpenseLastGenerated; // ADDED HERE
 }
 
 const db: DB = {
@@ -78,138 +103,57 @@ const db: DB = {
   ...models,
 };
 
-// ===== ASSOCIATIONS =====
+// --- Associations ---
 
-/**
- * BRAND & CATEGORY HIERARCHY (The Change)
- * Now Brand belongs to Category, and Product only cares about Brand.
- */
-db.Brand.belongsTo(db.Category, { 
-  foreignKey: "categoryId", 
-  as: "category",
-  onDelete: "RESTRICT" 
-});
-db.Category.hasMany(db.Brand, { 
-  foreignKey: "categoryId", 
-  as: "brands" 
-});
+db.Brand.belongsTo(db.Category, { foreignKey: "categoryId", as: "category", onDelete: "RESTRICT" });
+db.Category.hasMany(db.Brand, { foreignKey: "categoryId", as: "brands" });
 
-/**
- * PRODUCT CORE
- * Note: Removed Product.belongsTo(Category) because it's now redundant.
- */
-db.Product.belongsTo(db.Brand, { 
-  foreignKey: "brandId", 
-  as: "brand",
-  onDelete: "RESTRICT" 
-});
-db.Brand.hasMany(db.Product, { 
-  foreignKey: "brandId", 
-  as: "products" 
-});
+db.Product.belongsTo(db.Brand, { foreignKey: "brandId", as: "brand", onDelete: "RESTRICT" });
+db.Brand.hasMany(db.Product, { foreignKey: "brandId", as: "products" });
 
-db.Product.belongsTo(db.Packaging, { 
-  foreignKey: "packagingId", 
-  as: "packaging",
-  onDelete: "RESTRICT" 
-});
-db.Packaging.hasMany(db.Product, { 
-  foreignKey: "packagingId", 
-  as: "products" 
-});
+db.Product.belongsTo(db.Packaging, { foreignKey: "packagingId", as: "packaging", onDelete: "RESTRICT" });
+db.Packaging.hasMany(db.Product, { foreignKey: "packagingId", as: "products" });
 
-/**
- * PRICING & STOCK
- */
-db.Product.hasMany(db.ProductPrice, { 
-  foreignKey: "productId", 
-  as: "prices", 
-  onDelete: "CASCADE" 
-});
-db.ProductPrice.belongsTo(db.Product, { 
-  foreignKey: "productId", 
-  as: "product" 
-});
+db.Product.hasMany(db.ProductPrice, { foreignKey: "productId", as: "prices", onDelete: "CASCADE" });
+db.ProductPrice.belongsTo(db.Product, { foreignKey: "productId", as: "product" });
 
-db.Product.hasOne(db.Stock, { 
-  foreignKey: "productId", 
-  as: "stock", 
-  onDelete: "CASCADE" 
-});
-db.Stock.belongsTo(db.Product, { 
-  foreignKey: "productId", 
-  as: "product" 
-});
+db.Product.hasOne(db.Stock, { foreignKey: "productId", as: "stock", onDelete: "CASCADE" });
+db.Stock.belongsTo(db.Product, { foreignKey: "productId", as: "product" });
 
-/**
- * SALES & ITEMS
- */
-db.Sale.hasMany(db.SaleItem, { 
-  foreignKey: "saleId", 
-  as: "items", 
-  onDelete: "CASCADE" 
-});
-db.SaleItem.belongsTo(db.Sale, { 
-  foreignKey: "saleId", 
-  as: "sale" 
-});
+db.Sale.hasMany(db.SaleItem, { foreignKey: "saleId", as: "items", onDelete: "CASCADE" });
+db.SaleItem.belongsTo(db.Sale, { foreignKey: "saleId", as: "sale" });
 
-db.SaleItem.belongsTo(db.Product, { 
-  foreignKey: "productId", 
-  as: "product" 
-});
-db.Product.hasMany(db.SaleItem, { 
-  foreignKey: "productId", 
-  as: "sales" 
-});
+db.SaleItem.belongsTo(db.Product, { foreignKey: "productId", as: "product" });
+db.Product.hasMany(db.SaleItem, { foreignKey: "productId", as: "sales" });
 
-// The Financial Link: Link SaleItem to the Price version used
-db.SaleItem.belongsTo(db.ProductPrice, { 
-  foreignKey: "priceId", 
-  as: "priceVersion" 
-});
+db.SaleItem.belongsTo(db.ProductPrice, { foreignKey: "priceId", as: "priceVersion" });
 
-/**
- * HISTORY & AUDIT
- */
-db.Product.hasMany(db.StockHistory, { 
-  foreignKey: "productId", 
-  as: "stockHistory" 
-});
-db.StockHistory.belongsTo(db.Product, { 
-  foreignKey: "productId", 
-  as: "product" 
-});
+db.Product.hasMany(db.StockHistory, { foreignKey: "productId", as: "stockHistory" });
+db.StockHistory.belongsTo(db.Product, { foreignKey: "productId", as: "product" });
 
-db.StockHistory.belongsTo(db.Sale, { 
-  foreignKey: "saleId", 
-  as: "sale" 
-});
-db.StockHistory.belongsTo(db.ProductPrice, { 
-  foreignKey: "priceId", 
-  as: "price" 
-});
+db.StockHistory.belongsTo(db.Sale, { foreignKey: "saleId", as: "sale" });
+db.StockHistory.belongsTo(db.ProductPrice, { foreignKey: "priceId", as: "price" });
 
-/**
- * EXCHANGES (Double-Product Relationship)
- */
-db.Exchange.belongsTo(db.Product, { 
-  foreignKey: "sourceProductId", 
-  as: "sourceProduct" 
-});
-db.Exchange.belongsTo(db.Product, { 
-  foreignKey: "targetProductId", 
-  as: "targetProduct" 
-});
+db.Exchange.belongsTo(db.Product, { foreignKey: "sourceProductId", as: "sourceProduct" });
+db.Exchange.belongsTo(db.Product, { foreignKey: "targetProductId", as: "targetProduct" });
+db.Exchange.belongsTo(db.ProductPrice, { foreignKey: "sourcePriceId", as: "sourcePrice" });
+db.Exchange.belongsTo(db.ProductPrice, { foreignKey: "targetPriceId", as: "targetPrice" });
 
-// Financial link for Exchange
-db.Exchange.belongsTo(db.ProductPrice, { 
-  foreignKey: "sourcePriceId", 
-  as: "sourcePrice" 
-});
-db.Exchange.belongsTo(db.ProductPrice, { 
-  foreignKey: "targetPriceId", 
-  as: "targetPrice" 
-});
+db.ExpenseCategory.belongsTo(db.ExpenseCategory, { foreignKey: "parentId", as: "parentCategory", onDelete: "SET NULL" });
+db.ExpenseCategory.hasMany(db.ExpenseCategory, { foreignKey: "parentId", as: "subCategories" });
+db.ExpenseCategory.hasMany(db.Expense, { foreignKey: "categoryId", as: "expenses" });
+db.Expense.belongsTo(db.ExpenseCategory, { foreignKey: "categoryId", as: "category" });
+db.ExpenseCategory.hasMany(db.RecurringExpense, { foreignKey: "categoryId", as: "recurringTemplates" });
+db.RecurringExpense.belongsTo(db.ExpenseCategory, { foreignKey: "categoryId", as: "category" });
+db.RecurringExpense.hasMany(db.Expense, { foreignKey: "recurringExpenseId", as: "realizedExpenses" });
+db.Expense.belongsTo(db.RecurringExpense, { foreignKey: "recurringExpenseId", as: "recurringTemplate" });
+db.ExpensePlan.hasMany(db.Expense, { foreignKey: "expensePlanId", as: "expenses" });
+db.Expense.belongsTo(db.ExpensePlan, { foreignKey: "expensePlanId", as: "plan" });
+db.Product.hasMany(db.Expense, { foreignKey: "productId", as: "overheadExpenses" });
+db.Expense.belongsTo(db.Product, { foreignKey: "productId", as: "product" });
+
+// ADDED TRACKING RELATIONSHIPS:
+db.RecurringExpense.hasOne(db.RecurringExpenseLastGenerated, { foreignKey: "recurringExpenseId", as: "lastGenerated" });
+db.RecurringExpenseLastGenerated.belongsTo(db.RecurringExpense, { foreignKey: "recurringExpenseId", as: "recurringExpense" });
 
 export default db;

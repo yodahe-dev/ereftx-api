@@ -66,8 +66,6 @@ export const deleteSale = async (req: Request, res: Response) => {
     const sale = await db.Sale.findByPk(saleId);
     if (!sale)
       return res.status(404).json({ success: false, message: "Not found" });
-    // Note: Deleting a sale does NOT automatically return stock.
-    // That's a business decision you may want to add later.
     await sale.destroy();
     return res.json({ success: true, message: "Sale deleted" });
   } catch (err: any) {

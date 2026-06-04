@@ -9,6 +9,11 @@ import ProductRouter from "./Router/product.router";
 import stcokRouter from "./Router/stock.router";
 import Sales from "./Router/sale.routes";
 
+import expanceRouter from "./Router/expense.router";
+import recurringExpenseRouter from "./Router/recurringExpense.router";
+import expensePlanRouter from "./Router/expensePlan.router";
+import expenseCategoryRouter from "./Router/expenseCategory.router";
+
 dotenv.config();
 
 const app = express();
@@ -50,6 +55,10 @@ app.use("/api/packagings", PackagingRouter);
 app.use("/api/products", ProductRouter);
 app.use("/api/stocks", stcokRouter);
 app.use("/api/sales", Sales);
+app.use("/api/expenses", expanceRouter);
+app.use("/api/expense-plans", expensePlanRouter);
+app.use("/api/recurring-expenses", recurringExpenseRouter);
+app.use("/api/expense-categories", expenseCategoryRouter);
 
 /**
  * HEALTH CHECK
