@@ -20,39 +20,39 @@ export class ExpensePlanController {
       const plan = await ExpensePlanService.create(validated);
       res.status(201).json({ success: true, data: plan });
     } catch (error) {
-      this.handleError(error, res);
+      ExpensePlanController.handleError(error, res);
     }
   }
 
   static async get(req: Request, res: Response): Promise<void> {
     try {
-      const id = this.getId(req);
+      const id = ExpensePlanController.getId(req);
       const includeExpenses = req.query.includeExpenses === 'true';
       const plan = await ExpensePlanService.getById(id, includeExpenses);
       res.json({ success: true, data: plan });
     } catch (error) {
-      this.handleError(error, res);
+      ExpensePlanController.handleError(error, res);
     }
   }
 
   static async update(req: Request, res: Response): Promise<void> {
     try {
-      const id = this.getId(req);
+      const id = ExpensePlanController.getId(req);
       const validated = updateExpensePlanSchema.parse({ ...req.body, id });
       const plan = await ExpensePlanService.update(id, validated);
       res.json({ success: true, data: plan });
     } catch (error) {
-      this.handleError(error, res);
+      ExpensePlanController.handleError(error, res);
     }
   }
 
   static async delete(req: Request, res: Response): Promise<void> {
     try {
-      const id = this.getId(req);
+      const id = ExpensePlanController.getId(req);
       await ExpensePlanService.delete(id);
       res.status(204).send();
     } catch (error) {
-      this.handleError(error, res);
+      ExpensePlanController.handleError(error, res);
     }
   }
 
@@ -62,21 +62,20 @@ export class ExpensePlanController {
       const result = await ExpensePlanService.list(query);
       res.json({ success: true, ...result });
     } catch (error) {
-      this.handleError(error, res);
+      ExpensePlanController.handleError(error, res);
     }
   }
 
   static async refreshAllocation(req: Request, res: Response): Promise<void> {
     try {
-      const id = this.getId(req);
+      const id = ExpensePlanController.getId(req);
       const newAmount = await ExpensePlanService.refreshAllocatedAmount(id);
       res.json({ success: true, data: { currentAllocatedAmount: newAmount } });
     } catch (error) {
-      this.handleError(error, res);
+      ExpensePlanController.handleError(error, res);
     }
   }
 
-  // Example bulk endpoint: auto-cancel overdue plans
   static async autoCancelOverdue(req: Request, res: Response): Promise<void> {
     try {
       const today = new Date();
@@ -87,7 +86,7 @@ export class ExpensePlanController {
       );
       res.json({ success: true, message: `Cancelled ${count} overdue plans` });
     } catch (error) {
-      this.handleError(error, res);
+      ExpensePlanController.handleError(error, res);
     }
   }
 
@@ -95,7 +94,9 @@ export class ExpensePlanController {
     if (error instanceof ZodError) {
       res.status(400).json({ success: false, errors: error.flatten() });
     } else if (error instanceof Error) {
-      res.status(400).json({ success: false, message: error.message });
+      // Use 409 for linked expenses conflict
+      const status = error.message.includes('Cannot delete plan with linked expenses') ? 409 : 400;
+      res.status(status).json({ success: false, message: error.message });
     } else {
       res.status(500).json({ success: false, message: 'Internal server error' });
     }

@@ -20,39 +20,41 @@ export class ExpenseCategoryController {
       const category = await ExpenseCategoryService.create(validated);
       res.status(201).json({ success: true, data: category });
     } catch (error) {
-      this.handleError(error, res);
+      ExpenseCategoryController.handleError(error, res);
     }
   }
 
   static async get(req: Request, res: Response): Promise<void> {
     try {
-      const id = this.getId(req);
+      const id = ExpenseCategoryController.getId(req);
       const query = expenseCategoryQuerySchema.parse(req.query);
       const category = await ExpenseCategoryService.getById(id, query);
       res.json({ success: true, data: category });
     } catch (error) {
-      this.handleError(error, res);
+      ExpenseCategoryController.handleError(error, res);
     }
   }
 
   static async update(req: Request, res: Response): Promise<void> {
     try {
-      const id = this.getId(req);
+      const id = ExpenseCategoryController.getId(req);
       const validated = updateExpenseCategorySchema.parse({ ...req.body, id });
       const category = await ExpenseCategoryService.update(id, validated);
       res.json({ success: true, data: category });
     } catch (error) {
-      this.handleError(error, res);
+      ExpenseCategoryController.handleError(error, res);
     }
   }
 
   static async delete(req: Request, res: Response): Promise<void> {
     try {
-      const id = this.getId(req);
-      await ExpenseCategoryService.delete(id);
+      const id = ExpenseCategoryController.getId(req);
+      const force = req.query.force === 'true';
+      const reassignTo = typeof req.query.reassignTo === 'string' ? req.query.reassignTo : undefined;
+      await ExpenseCategoryService.delete(id, { force, reassignToCategoryId: reassignTo });
       res.status(204).send();
     } catch (error) {
-      this.handleError(error, res);
+      ExpenseCategoryController.handleError(error, res);
     }
   }
 
@@ -62,7 +64,7 @@ export class ExpenseCategoryController {
       const categories = await ExpenseCategoryService.list(query);
       res.json({ success: true, data: categories });
     } catch (error) {
-      this.handleError(error, res);
+      ExpenseCategoryController.handleError(error, res);
     }
   }
 
@@ -70,7 +72,8 @@ export class ExpenseCategoryController {
     if (error instanceof ZodError) {
       res.status(400).json({ success: false, errors: error.flatten() });
     } else if (error instanceof Error) {
-      res.status(400).json({ success: false, message: error.message });
+      const status = error.message.includes('force=true') ? 409 : 400;
+      res.status(status).json({ success: false, message: error.message });
     } else {
       res.status(500).json({ success: false, message: 'Internal server error' });
     }

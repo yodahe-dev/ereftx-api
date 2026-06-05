@@ -8,14 +8,9 @@ import {
   ExpensePlanStatusEnum,
 } from '../validations/expensePlan.schema';
 
-// Custom LRU + TTL cache (reuse existing util or re-implement here)
-// Assuming AdvancedCache from previous step is available.
-// If not, we'll include a minimalist version.
-
 export class ExpensePlanService {
-  private static cache = new AdvancedCache<string, any>(500, 120); // 2 min TTL
+  private static cache = new AdvancedCache<string, any>(500, 120);
 
-  // ========== CRUD ==========
   static async create(data: CreateExpensePlanInput) {
     const plan = await db.ExpensePlan.create({
       ...data,
@@ -31,7 +26,7 @@ export class ExpensePlanService {
     if (cached) return cached;
 
     const include = includeExpenses
-      ? [{ model: db.Expense, as: 'expenses', required: false, limit: 1000 }] // limit to avoid overload
+      ? [{ model: db.Expense, as: 'expenses', required: false, limit: 1000 }]
       : [];
 
     const plan = await db.ExpensePlan.findByPk(id, { include });
@@ -45,7 +40,6 @@ export class ExpensePlanService {
     const plan = await db.ExpensePlan.findByPk(id);
     if (!plan) throw new Error('Expense plan not found');
 
-    // Validate status transition
     if (data.status && data.status !== plan.status) {
       this.validateStatusTransition(plan.status, data.status);
     }
@@ -59,14 +53,20 @@ export class ExpensePlanService {
     const plan = await db.ExpensePlan.findByPk(id);
     if (!plan) throw new Error('Expense plan not found');
 
-    // Check if any expenses linked
     const expenseCount = await db.Expense.count({ where: { expensePlanId: id } });
     if (expenseCount > 0) {
-      throw new Error('Cannot delete plan with linked expenses. Reassign or delete expenses first.');
+      throw new Error(`Cannot delete plan with ${expenseCount} linked expenses. Reassign or delete expenses first.`);
     }
 
-    await plan.destroy();
-    this.invalidatePlanCache(id);
+    const transaction = await db.sequelize.transaction();
+    try {
+      await plan.destroy({ transaction });
+      await transaction.commit();
+      this.invalidatePlanCache(id);
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
   }
 
   static async list(query: ExpensePlanQueryInput) {
@@ -104,7 +104,7 @@ export class ExpensePlanService {
     });
 
     const result = {
-      data: rows.map((p: { toJSON: () => any; }) => p.toJSON()),
+      data: rows.map((p: any) => p.toJSON()),
       pagination: {
         page: query.page,
         limit: query.limit,
@@ -116,11 +116,6 @@ export class ExpensePlanService {
     return result;
   }
 
-  // ========== Allocation Management (Auto-update from linked Expenses) ==========
-  /**
-   * Recalculate currentAllocatedAmount for a plan based on linked expenses.
-   * Uses efficient aggregation query (SUM) instead of loading all records.
-   */
   static async refreshAllocatedAmount(planId: string): Promise<number> {
     const result = await db.Expense.sum('amount', {
       where: { expensePlanId: planId },
@@ -134,20 +129,11 @@ export class ExpensePlanService {
     return total;
   }
 
-  /**
-   * Call this after any expense create/update/delete that affects a plan.
-   * Efficiently updates only the impacted plan.
-   */
   static async onExpenseChanged(planId: string | null) {
     if (!planId) return;
     await this.refreshAllocatedAmount(planId);
   }
 
-  // ========== Bulk Operations (for large datasets) ==========
-  /**
-   * Batch update status for many plans (e.g., mark expired targets as 'cancelled')
-   * Uses DSA: batch processing with limit to avoid memory overload.
-   */
   static async batchUpdateStatusByCondition(
     condition: (plan: any) => boolean,
     newStatus: typeof ExpensePlanStatusEnum[keyof typeof ExpensePlanStatusEnum],
@@ -158,7 +144,7 @@ export class ExpensePlanService {
     while (true) {
       const statusValue = String(newStatus);
       const plans = await db.ExpensePlan.findAll({
-        where: { status: { [Op.ne]: statusValue } }, // avoid already updated
+        where: { status: { [Op.ne]: statusValue } },
         offset,
         limit: batchSize,
         raw: true,
@@ -174,7 +160,6 @@ export class ExpensePlanService {
           { where: { id: { [Op.in]: idsToUpdate } } }
         );
         updatedCount += count;
-        // Invalidate cache for each updated plan
         idsToUpdate.forEach(id => this.invalidatePlanCache(id));
       }
       offset += batchSize;
@@ -183,7 +168,6 @@ export class ExpensePlanService {
     return updatedCount;
   }
 
-  // ========== Status Transition Validation ==========
   private static validateStatusTransition(from: string, to: string): void {
     const allowedTransitions: Record<string, string[]> = {
       planned: ['active', 'cancelled'],
@@ -196,9 +180,7 @@ export class ExpensePlanService {
     }
   }
 
-  // ========== Cache Invalidation ==========
   private static invalidatePlanCache(planId: string): void {
-    // Clear specific plan keys
     for (const key of this.cache['cache'].keys()) {
       if (typeof key === 'string' && key.startsWith(`plan:${planId}`)) {
         this.cache.del(key);
