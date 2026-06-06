@@ -20,39 +20,39 @@ export class ExpensePlanController {
       const plan = await ExpensePlanService.create(validated);
       res.status(201).json({ success: true, data: plan });
     } catch (error) {
-      ExpensePlanController.handleError(error, res);
+      this.handleError(error, res);
     }
   }
 
   static async get(req: Request, res: Response): Promise<void> {
     try {
-      const id = ExpensePlanController.getId(req);
+      const id = this.getId(req);
       const includeExpenses = req.query.includeExpenses === 'true';
       const plan = await ExpensePlanService.getById(id, includeExpenses);
       res.json({ success: true, data: plan });
     } catch (error) {
-      ExpensePlanController.handleError(error, res);
+      this.handleError(error, res);
     }
   }
 
   static async update(req: Request, res: Response): Promise<void> {
     try {
-      const id = ExpensePlanController.getId(req);
+      const id = this.getId(req);
       const validated = updateExpensePlanSchema.parse({ ...req.body, id });
       const plan = await ExpensePlanService.update(id, validated);
       res.json({ success: true, data: plan });
     } catch (error) {
-      ExpensePlanController.handleError(error, res);
+      this.handleError(error, res);
     }
   }
 
   static async delete(req: Request, res: Response): Promise<void> {
     try {
-      const id = ExpensePlanController.getId(req);
+      const id = this.getId(req);
       await ExpensePlanService.delete(id);
       res.status(204).send();
     } catch (error) {
-      ExpensePlanController.handleError(error, res);
+      this.handleError(error, res);
     }
   }
 
@@ -62,17 +62,17 @@ export class ExpensePlanController {
       const result = await ExpensePlanService.list(query);
       res.json({ success: true, ...result });
     } catch (error) {
-      ExpensePlanController.handleError(error, res);
+      this.handleError(error, res);
     }
   }
 
   static async refreshAllocation(req: Request, res: Response): Promise<void> {
     try {
-      const id = ExpensePlanController.getId(req);
+      const id = this.getId(req);
       const newAmount = await ExpensePlanService.refreshAllocatedAmount(id);
       res.json({ success: true, data: { currentAllocatedAmount: newAmount } });
     } catch (error) {
-      ExpensePlanController.handleError(error, res);
+      this.handleError(error, res);
     }
   }
 
@@ -86,7 +86,7 @@ export class ExpensePlanController {
       );
       res.json({ success: true, message: `Cancelled ${count} overdue plans` });
     } catch (error) {
-      ExpensePlanController.handleError(error, res);
+      this.handleError(error, res);
     }
   }
 

@@ -5,7 +5,7 @@ const router = Router();
 
 router.post('/', ExpensePlanController.create);
 router.get('/', ExpensePlanController.list);
-router.get('/auto-cancel-overdue', ExpensePlanController.autoCancelOverdue); // bulk action
+router.get('/auto-cancel-overdue', ExpensePlanController.autoCancelOverdue);
 router.get('/:id', ExpensePlanController.get);
 router.put('/:id', ExpensePlanController.update);
 router.delete('/:id', ExpensePlanController.delete);

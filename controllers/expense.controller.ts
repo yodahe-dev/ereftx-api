@@ -28,7 +28,7 @@ export class ExpenseController {
       const expense = await ExpenseService.createExpense(validated);
       res.status(201).json({ success: true, data: expense });
     } catch (error) {
-      ExpenseController.handleError(error, res);
+      this.handleError(error, res);
     }
   }
 
@@ -37,11 +37,11 @@ export class ExpenseController {
    */
   static async get(req: Request, res: Response): Promise<void> {
     try {
-      const id = ExpenseController.getId(req);
+      const id = this.getId(req);
       const expense = await ExpenseService.getExpenseById(id);
       res.json({ success: true, data: expense });
     } catch (error) {
-      ExpenseController.handleError(error, res);
+      this.handleError(error, res);
     }
   }
 
@@ -50,12 +50,12 @@ export class ExpenseController {
    */
   static async update(req: Request, res: Response): Promise<void> {
     try {
-      const id = ExpenseController.getId(req);
+      const id = this.getId(req);
       const validated = updateExpenseSchema.parse({ ...req.body, id });
       const expense = await ExpenseService.updateExpense(id, validated);
       res.json({ success: true, data: expense });
     } catch (error) {
-      ExpenseController.handleError(error, res);
+      this.handleError(error, res);
     }
   }
 
@@ -64,11 +64,11 @@ export class ExpenseController {
    */
   static async delete(req: Request, res: Response): Promise<void> {
     try {
-      const id = ExpenseController.getId(req);
+      const id = this.getId(req);
       await ExpenseService.deleteExpense(id);
       res.status(204).send();
     } catch (error) {
-      ExpenseController.handleError(error, res);
+      this.handleError(error, res);
     }
   }
 
@@ -81,7 +81,7 @@ export class ExpenseController {
       const result = await ExpenseService.listExpenses(query);
       res.json({ success: true, ...result });
     } catch (error) {
-      ExpenseController.handleError(error, res);
+      this.handleError(error, res);
     }
   }
 
@@ -97,7 +97,7 @@ export class ExpenseController {
       );
       res.json({ success: true, data: summary });
     } catch (error) {
-      ExpenseController.handleError(error, res);
+      this.handleError(error, res);
     }
   }
 
