@@ -11,17 +11,12 @@ export const sequelize = new Sequelize(
     host: process.env.DB_HOST as string,
     dialect: "mysql",
     logging: false,
-    timezone: "+03:00", // Recommended for Ethiopia (EAT)
-    pool: {
-      max: 5,
-      min: 0,
-      acquire: 30000,
-      idle: 10000,
-    },
+    timezone: "+03:00",
+    pool: { max: 5, min: 0, acquire: 30000, idle: 10000 },
   }
 );
 
-// Import init functions
+// Import existing init functions
 import initProduct from "./Product";
 import initProductPrice from "./ProductPricing";
 import initStock from "./Stock";
@@ -33,7 +28,26 @@ import initPackaging from "./Packaging";
 import initExchange from "./Exchange";
 import initStockHistory from "./StockHistory";
 
-// Initialize models
+// Import Expense-related models
+import initExpenseCategory from "./ExpenseCategory";
+import initRecurringExpense from "./RecurringExpense";
+import initExpensePlan from "./ExpensePlan";
+import initExpense from "./Expense";
+import initRecurringExpenseLastGenerated from "./RecurringExpenseLastGenerated";
+
+// Import new trading journal models
+import initTradingAccount from "./TradingAccount";
+import initTradingSession from "./TradingSession";
+import initTrade from "./Trade";
+import initTradePlan from "./TradePlan";
+import initRiskRule from "./RiskRule";
+import initSessionSchedule from "./SessionSchedule";
+import initSessionPerformance from "./SessionPerformance";
+import initUserTradingSchedule from "./UserTradingSchedule";
+import initSessionNotification from "./SessionNotification";
+import initSessionStatistic from "./SessionStatistic";
+
+// Initialize existing models
 const Product = initProduct(sequelize);
 const ProductPrice = initProductPrice(sequelize);
 const Stock = initStock(sequelize);
@@ -45,21 +59,24 @@ const Packaging = initPackaging(sequelize);
 const Exchange = initExchange(sequelize);
 const StockHistory = initStockHistory(sequelize);
 
-// Import Expense-related models
-import initExpenseCategory from "./ExpenseCategory";
-import initRecurringExpense from "./RecurringExpense";
-import initExpensePlan from "./ExpensePlan";
-import initExpense from "./Expense";
-// ADDED THIS IMPORT:
-import initRecurringExpenseLastGenerated from "./RecurringExpenseLastGenerated"; 
-
 // Initialize Expense models
 const ExpenseCategory = initExpenseCategory(sequelize);
 const RecurringExpense = initRecurringExpense(sequelize);
 const ExpensePlan = initExpensePlan(sequelize);
 const Expense = initExpense(sequelize);
-// ADDED THIS INITIALIZATION:
-const RecurringExpenseLastGenerated = initRecurringExpenseLastGenerated(sequelize); 
+const RecurringExpenseLastGenerated = initRecurringExpenseLastGenerated(sequelize);
+
+// Initialize new trading models
+const TradingAccount = initTradingAccount(sequelize);
+const TradingSession = initTradingSession(sequelize);
+const Trade = initTrade(sequelize);
+const TradePlan = initTradePlan(sequelize);
+const RiskRule = initRiskRule(sequelize);
+const SessionSchedule = initSessionSchedule(sequelize);
+const SessionPerformance = initSessionPerformance(sequelize);
+const UserTradingSchedule = initUserTradingSchedule(sequelize);
+const SessionNotification = initSessionNotification(sequelize);
+const SessionStatistic = initSessionStatistic(sequelize);
 
 export const models = {
   Product,
@@ -76,7 +93,17 @@ export const models = {
   RecurringExpense,
   ExpensePlan,
   Expense,
-  RecurringExpenseLastGenerated // ADDED HERE
+  RecurringExpenseLastGenerated,
+  TradingAccount,
+  TradingSession,
+  Trade,
+  TradePlan,
+  RiskRule,
+  SessionSchedule,
+  SessionPerformance,
+  UserTradingSchedule,
+  SessionNotification,
+  SessionStatistic,
 };
 
 export interface DB {
@@ -95,7 +122,17 @@ export interface DB {
   RecurringExpense: typeof RecurringExpense;
   ExpensePlan: typeof ExpensePlan;
   Expense: typeof Expense;
-  RecurringExpenseLastGenerated: typeof RecurringExpenseLastGenerated; // ADDED HERE
+  RecurringExpenseLastGenerated: typeof RecurringExpenseLastGenerated;
+  TradingAccount: typeof TradingAccount;
+  TradingSession: typeof TradingSession;
+  Trade: typeof Trade;
+  TradePlan: typeof TradePlan;
+  RiskRule: typeof RiskRule;
+  SessionSchedule: typeof SessionSchedule;
+  SessionPerformance: typeof SessionPerformance;
+  UserTradingSchedule: typeof UserTradingSchedule;
+  SessionNotification: typeof SessionNotification;
+  SessionStatistic: typeof SessionStatistic;
 }
 
 const db: DB = {
@@ -103,8 +140,7 @@ const db: DB = {
   ...models,
 };
 
-// --- Associations ---
-
+// ==================== EXISTING ASSOCIATIONS ====================
 db.Brand.belongsTo(db.Category, { foreignKey: "categoryId", as: "category", onDelete: "RESTRICT" });
 db.Category.hasMany(db.Brand, { foreignKey: "categoryId", as: "brands" });
 
@@ -152,8 +188,57 @@ db.Expense.belongsTo(db.ExpensePlan, { foreignKey: "expensePlanId", as: "plan" }
 db.Product.hasMany(db.Expense, { foreignKey: "productId", as: "overheadExpenses" });
 db.Expense.belongsTo(db.Product, { foreignKey: "productId", as: "product" });
 
-// ADDED TRACKING RELATIONSHIPS:
 db.RecurringExpense.hasOne(db.RecurringExpenseLastGenerated, { foreignKey: "recurringExpenseId", as: "lastGenerated" });
 db.RecurringExpenseLastGenerated.belongsTo(db.RecurringExpense, { foreignKey: "recurringExpenseId", as: "recurringExpense" });
+
+// ==================== NEW TRADING JOURNAL ASSOCIATIONS ====================
+
+// Account -> Trades
+db.TradingAccount.hasMany(db.Trade, { foreignKey: "accountId", as: "trades", onDelete: "CASCADE" });
+db.Trade.belongsTo(db.TradingAccount, { foreignKey: "accountId", as: "account" });
+
+// Account -> TradePlans
+db.TradingAccount.hasMany(db.TradePlan, { foreignKey: "accountId", as: "plans", onDelete: "CASCADE" });
+db.TradePlan.belongsTo(db.TradingAccount, { foreignKey: "accountId", as: "account" });
+
+// Account -> RiskRules
+db.TradingAccount.hasMany(db.RiskRule, { foreignKey: "accountId", as: "riskRules", onDelete: "CASCADE" });
+db.RiskRule.belongsTo(db.TradingAccount, { foreignKey: "accountId", as: "account" });
+
+// Account -> SessionStatistics
+db.TradingAccount.hasMany(db.SessionStatistic, { foreignKey: "accountId", as: "sessionStats", onDelete: "CASCADE" });
+db.SessionStatistic.belongsTo(db.TradingAccount, { foreignKey: "accountId", as: "account" });
+
+// Trade <-> TradingSession (open)
+db.Trade.belongsTo(db.TradingSession, { foreignKey: "openSessionId", as: "openSession" });
+db.TradingSession.hasMany(db.Trade, { foreignKey: "openSessionId", as: "tradesOpened" });
+
+// Trade <-> TradingSession (close)
+db.Trade.belongsTo(db.TradingSession, { foreignKey: "closeSessionId", as: "closeSession" });
+db.TradingSession.hasMany(db.Trade, { foreignKey: "closeSessionId", as: "tradesClosed" });
+
+// Trade <-> TradingSession (overlaps)
+db.Trade.belongsTo(db.TradingSession, { foreignKey: "openOverlapId", as: "openOverlap" });
+db.Trade.belongsTo(db.TradingSession, { foreignKey: "closeOverlapId", as: "closeOverlap" });
+
+// Trade <-> TradePlan (planned entry)
+db.Trade.belongsTo(db.TradePlan, { foreignKey: "plannedEntryId", as: "plannedEntry" });
+db.TradePlan.hasOne(db.Trade, { foreignKey: "plannedEntryId", as: "executedTrade" });
+
+// SessionSchedule <-> TradingSession
+db.TradingSession.hasMany(db.SessionSchedule, { foreignKey: "sessionId", as: "customSchedules", onDelete: "CASCADE" });
+db.SessionSchedule.belongsTo(db.TradingSession, { foreignKey: "sessionId", as: "session" });
+
+// SessionPerformance <-> TradingSession
+db.TradingSession.hasMany(db.SessionPerformance, { foreignKey: "sessionId", as: "performanceRecords", onDelete: "CASCADE" });
+db.SessionPerformance.belongsTo(db.TradingSession, { foreignKey: "sessionId", as: "session" });
+
+// UserTradingSchedule <-> TradingSession (optional)
+db.UserTradingSchedule.belongsTo(db.TradingSession, { foreignKey: "sessionId", as: "session" });
+db.TradingSession.hasMany(db.UserTradingSchedule, { foreignKey: "sessionId", as: "userSchedules" });
+
+// SessionNotification <-> TradingSession
+db.SessionNotification.belongsTo(db.TradingSession, { foreignKey: "sessionId", as: "session" });
+db.TradingSession.hasMany(db.SessionNotification, { foreignKey: "sessionId", as: "notifications" });
 
 export default db;

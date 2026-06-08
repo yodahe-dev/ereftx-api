@@ -13,11 +13,16 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "axios": "^1.17.0",
     "cors": "^2.8.6",
+    "cron": "^4.4.0",
     "dotenv": "^17.4.1",
     "express": "^5.2.1",
+    "ioredis": "^5.11.1",
     "joi": "^18.2.1",
     "mysql2": "^3.22.0",
+    "node-cache": "^5.1.2",
+    "node-cron": "^4.2.1",
     "sequelize": "^6.37.8",
     "uuid": "^13.0.0",
     "zod": "^4.3.6"
@@ -25,6 +30,7 @@
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
+    "@types/ioredis": "^4.28.10",
     "@types/node": "^25.6.0",
     "nodemon": "^3.1.14",
     "sequelize-cli": "^6.6.5",
