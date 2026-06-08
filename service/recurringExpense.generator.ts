@@ -1,10 +1,28 @@
-import { Op, Transaction } from 'sequelize';
+import { Op } from 'sequelize';
 import db from '../models';
+
 const { RecurringExpense, Expense, RecurringExpenseLastGenerated } = db;
 
 type Frequency = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom';
 
 export class RecurringExpenseGenerator {
+  /**
+   * Ensure all active recurring expenses have a lastGeneratedDate record.
+   * Call this once during system startup or after migrations.
+   */
+  static async initializeLastGeneratedDates(): Promise<void> {
+    const active = await RecurringExpense.findAll({ where: { isActive: true } });
+    for (const rec of active) {
+      const exists = await RecurringExpenseLastGenerated.findByPk(rec.id);
+      if (!exists) {
+        await RecurringExpenseLastGenerated.create({
+          recurringExpenseId: rec.id,
+          lastGeneratedDate: new Date(0),
+        });
+      }
+    }
+  }
+
   /**
    * Generate due expenses up to the current date.
    * Uses lastGeneratedDate + checks existing expenses to avoid duplicates.
@@ -13,17 +31,34 @@ export class RecurringExpenseGenerator {
     asOfDate: Date = new Date(),
     dryRun: boolean = false
   ): Promise<{ generated: number; skipped: number; errors: string[] }> {
+    // Ensure all active recurring have a lastGenerated entry
+    await this.initializeLastGeneratedDates();
+
     const result = { generated: 0, skipped: 0, errors: [] as string[] };
-    const activeRecurrings = await db.RecurringExpense.findAll({
+    const activeRecurrings = await RecurringExpense.findAll({
       where: { isActive: true },
     });
 
+    if (activeRecurrings.length === 0) {
+      result.errors.push('No active recurring expenses found.');
+      return result;
+    }
+
     for (const recurring of activeRecurrings) {
       try {
-        const lastGen = await db.RecurringExpenseLastGenerated.findByPk(recurring.id);
-        const lastDate = lastGen?.lastGeneratedDate || new Date(0);
+        const lastGenRecord = await RecurringExpenseLastGenerated.findByPk(recurring.id);
+        let lastDate = lastGenRecord?.lastGeneratedDate || new Date(0);
 
-        // Generate all missing occurrences between lastDate+1 and asOfDate
+        // If lastDate is in the future (should not happen), reset to 0
+        if (lastDate > asOfDate) {
+          lastDate = new Date(0);
+          await RecurringExpenseLastGenerated.upsert({
+            recurringExpenseId: recurring.id,
+            lastGeneratedDate: lastDate,
+          });
+        }
+
+        // Generate all missing occurrences between lastDate (exclusive) and asOfDate (inclusive)
         const datesToGenerate = this.getDatesInRange(recurring, lastDate, asOfDate);
 
         for (const targetDate of datesToGenerate) {
@@ -35,8 +70,8 @@ export class RecurringExpenseGenerator {
 
           if (!dryRun) {
             await this.createExpenseFromRecurring(recurring, targetDate);
-            // Update lastGeneratedDate to this target date after successful generation
-            await db.RecurringExpenseLastGenerated.upsert({
+            // Update lastGeneratedDate to this target date
+            await RecurringExpenseLastGenerated.upsert({
               recurringExpenseId: recurring.id,
               lastGeneratedDate: targetDate,
             });
@@ -52,7 +87,6 @@ export class RecurringExpenseGenerator {
 
   /**
    * Backfill missing expenses for a specific recurring expense between startDate and endDate.
-   * @param dryRun if true, only returns count without inserting.
    */
   static async generateBacklog(
     recurringId: string,
@@ -60,7 +94,7 @@ export class RecurringExpenseGenerator {
     endDate: Date,
     dryRun: boolean = false
   ): Promise<number> {
-    const recurring = await db.RecurringExpense.findByPk(recurringId);
+    const recurring = await RecurringExpense.findByPk(recurringId);
     if (!recurring) throw new Error('Recurring expense not found');
 
     const allDates = this.getDatesInRange(recurring, startDate, endDate);
@@ -72,10 +106,10 @@ export class RecurringExpenseGenerator {
 
       if (!dryRun) {
         await this.createExpenseFromRecurring(recurring, targetDate);
-        // Update lastGeneratedDate only if this date is newer
-        const lastGen = await db.RecurringExpenseLastGenerated.findByPk(recurring.id);
+        // Update lastGeneratedDate if this date is newer than current
+        const lastGen = await RecurringExpenseLastGenerated.findByPk(recurring.id);
         if (!lastGen || lastGen.lastGeneratedDate < targetDate) {
-          await db.RecurringExpenseLastGenerated.upsert({
+          await RecurringExpenseLastGenerated.upsert({
             recurringExpenseId: recurring.id,
             lastGeneratedDate: targetDate,
           });
@@ -87,7 +121,7 @@ export class RecurringExpenseGenerator {
   }
 
   // ------------------------------------------------------------------
-  // PRIVATE HELPERS (AI‑level duplicate detection & date logic)
+  // PRIVATE HELPERS
   // ------------------------------------------------------------------
 
   /**
@@ -100,9 +134,7 @@ export class RecurringExpenseGenerator {
     toDate: Date
   ): Date[] {
     const dates: Date[] = [];
-    const start = new Date(fromDate);
-    // Move start to the next possible occurrence
-    let current = this.getNextOccurrenceAfter(recurring, start);
+    let current = this.getNextOccurrenceAfter(recurring, fromDate);
     while (current <= toDate) {
       dates.push(new Date(current));
       current = this.getNextOccurrenceAfter(recurring, current);
@@ -126,19 +158,21 @@ export class RecurringExpenseGenerator {
       case 'daily':
         return candidate;
 
-      case 'weekly':
-        // Move to next same weekday? For simplicity, we use 7‑day step.
-        // More accurate: find next Monday (or day of week) – but billingDay not used.
-        // We'll assume weekly means every 7 days from first occurrence.
-        // To keep it simple and deterministic, we just add 7 days.
+      case 'weekly': {
+        // Weekly: always add 7 days from candidate
         return new Date(candidate.getTime() + 7 * 86400000);
+      }
 
       case 'monthly': {
         let target = new Date(candidate);
-        target.setDate(billingDay);
+        // Set to the billing day, but handle month end
+        let targetDay = Math.min(billingDay, this.daysInMonth(target));
+        target.setDate(targetDay);
         if (target <= candidate) {
+          target = new Date(candidate);
           target.setMonth(target.getMonth() + 1);
-          target.setDate(billingDay);
+          targetDay = Math.min(billingDay, this.daysInMonth(target));
+          target.setDate(targetDay);
         }
         return target;
       }
@@ -159,13 +193,13 @@ export class RecurringExpenseGenerator {
     }
   }
 
+  private static daysInMonth(date: Date): number {
+    return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  }
+
   /**
-   * AI‑level duplicate check:
-   * For monthly expenses – checks if an expense already exists for the same month.
-   * For weekly/daily – checks exact date.
-   * Also considers that two different recurring expenses with same category/amount/billingDay
-   * might be considered duplicates? Here we check ONLY the same recurringExpenseId.
-   * If you want cross‑template duplicate detection (e.g., same category+amount+billingDay), uncomment the optional block.
+   * Check if an expense already exists for the same period (month for monthly, date for others)
+   * and also cross-check other recurring templates to avoid duplicates.
    */
   private static async expenseExistsForPeriod(
     recurring: any,
@@ -193,39 +227,33 @@ export class RecurringExpenseGenerator {
         endOfPeriod.setHours(23, 59, 59, 999);
     }
 
-    const whereClause: any = {
-      recurringExpenseId: recurring.id,
-      expenseDate: {
-        [Op.between]: [startOfPeriod, endOfPeriod],
+    // Check within the same recurring expense
+    const sameTemplateExists = await Expense.findOne({
+      where: {
+        recurringExpenseId: recurring.id,
+        expenseDate: { [Op.between]: [startOfPeriod, endOfPeriod] },
       },
-    };
+    });
+    if (sameTemplateExists) return true;
 
-    // Optional AI enhancement: also detect duplicates across different recurringExpenseId
-    // that have same category, amount, and expenseDate (if you consider them "same").
-    // Uncomment below if needed:
-
-    const crossCheck = await db.Expense.findOne({
+    // Cross‑template duplicate detection: same category, amount, and period
+    const crossExists = await Expense.findOne({
       where: {
         categoryId: recurring.categoryId,
         amount: recurring.amount,
-        expenseDate: {
-          [Op.between]: [startOfPeriod, endOfPeriod],
-        },
+        expenseDate: { [Op.between]: [startOfPeriod, endOfPeriod] },
         referenceType: 'recurring',
         recurringExpenseId: { [Op.ne]: recurring.id },
       },
     });
-    if (crossCheck) return true;
-
-    const exists = await db.Expense.findOne({ where: whereClause });
-    return !!exists;
+    return !!crossExists;
   }
 
   private static async createExpenseFromRecurring(
     recurring: any,
     expenseDate: Date
   ): Promise<any> {
-    return await db.Expense.create({
+    return await Expense.create({
       title: recurring.title,
       amount: recurring.amount,
       expenseDate,
