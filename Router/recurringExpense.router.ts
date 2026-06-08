@@ -5,7 +5,8 @@ const router = Router();
 
 router.post('/', RecurringExpenseController.create);
 router.get('/', RecurringExpenseController.list);
-router.get('/generate', RecurringExpenseController.generateNow); // manual trigger
+router.post('/generate', RecurringExpenseController.generateNow); // changed to POST for mutation + dry-run query
+router.get('/duplicates', RecurringExpenseController.findDuplicates); // NEW: duplicate check
 router.get('/:id', RecurringExpenseController.get);
 router.get('/:id/preview', RecurringExpenseController.preview);
 router.put('/:id', RecurringExpenseController.update);

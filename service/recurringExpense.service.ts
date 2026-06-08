@@ -123,4 +123,26 @@ export class RecurringExpenseService {
         return null;
     }
   }
+
+  // ------------------------------------------------------------------
+  // NEW: Find duplicate recurring templates (AI-level duplicate detection)
+  // ------------------------------------------------------------------
+  static async findDuplicates(params: {
+    categoryId?: string;
+    amount?: number;
+    billingDay?: number;
+    frequency?: string;
+    excludeId?: string;
+  }): Promise<RecurringExpenseInstance[]> {
+    const where: any = { isActive: true };
+    if (params.categoryId) where.categoryId = params.categoryId;
+    if (params.amount !== undefined) where.amount = params.amount;
+    if (params.billingDay !== undefined) where.billingDay = params.billingDay;
+    if (params.frequency) where.frequency = params.frequency;
+    if (params.excludeId) where.id = { [Op.ne]: params.excludeId };
+
+    const candidates = await RecurringExpense.findAll({ where });
+    // If at least one match, return them (the frontend will show warning)
+    return candidates;
+  }
 }

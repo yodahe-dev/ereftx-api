@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { ZodError } from 'zod';
 import { RecurringExpenseService } from '../service/recurringExpense.service';
 import { RecurringExpenseGenerator } from '../service/recurringExpense.generator';
 import {
@@ -6,7 +7,6 @@ import {
   updateRecurringExpenseSchema,
   recurringExpenseQuerySchema,
 } from '../validations/recurringExpense.schema';
-import { ZodError } from 'zod';
 
 export class RecurringExpenseController {
   private static getId(req: Request): string {
@@ -77,7 +77,7 @@ export class RecurringExpenseController {
     }
   }
 
-  // Manual trigger for automation
+  // Manual trigger for automation (now POST with dry-run query)
   static async generateNow(req: Request, res: Response): Promise<void> {
     try {
       const dryRun = req.query.dryRun === 'true';
@@ -88,12 +88,36 @@ export class RecurringExpenseController {
     }
   }
 
+  // Backfill for a specific recurring expense
   static async backfill(req: Request, res: Response): Promise<void> {
     try {
       const id = this.getId(req);
       const { startDate, endDate, dryRun } = req.body;
-      const count = await RecurringExpenseGenerator.generateBacklog(id, new Date(startDate), new Date(endDate), dryRun === true);
+      if (!startDate || !endDate) throw new Error('startDate and endDate are required');
+      const count = await RecurringExpenseGenerator.generateBacklog(
+        id,
+        new Date(startDate),
+        new Date(endDate),
+        dryRun === true
+      );
       res.json({ success: true, message: `Generated ${count} expenses` });
+    } catch (error) {
+      this.handleError(error, res);
+    }
+  }
+
+  // NEW: Find duplicate recurring expense templates
+  static async findDuplicates(req: Request, res: Response): Promise<void> {
+    try {
+      const { categoryId, amount, billingDay, frequency, excludeId } = req.query;
+      const duplicates = await RecurringExpenseService.findDuplicates({
+        categoryId: categoryId as string,
+        amount: amount ? parseFloat(amount as string) : undefined,
+        billingDay: billingDay ? parseInt(billingDay as string) : undefined,
+        frequency: frequency as any,
+        excludeId: excludeId as string,
+      });
+      res.json({ success: true, data: duplicates });
     } catch (error) {
       this.handleError(error, res);
     }

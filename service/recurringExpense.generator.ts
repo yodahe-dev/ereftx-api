@@ -204,7 +204,6 @@ export class RecurringExpenseGenerator {
     // that have same category, amount, and expenseDate (if you consider them "same").
     // Uncomment below if needed:
 
-
     const crossCheck = await db.Expense.findOne({
       where: {
         categoryId: recurring.categoryId,
