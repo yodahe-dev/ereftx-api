@@ -1,9 +1,11 @@
+// analytics/TradingAccount.metrics.computer.ts
 import db from '../models';
 
-export class TradeMetricsComputer {
+const { Trade } = db;
 
+export class TradingAccountMetricsComputer {
   static async getSharpeRatio(accountId: string, riskFreeRate: number = 0.02): Promise<number> {
-    const trades = await db.Trade.findAll({
+    const trades = await Trade.findAll({
       where: { accountId, status: 'closed' },
       attributes: ['pnl'],
     });
@@ -16,17 +18,8 @@ export class TradeMetricsComputer {
     return (mean - riskFreeRate) / stdDev;
   }
 
-  static async getExpectancy(accountId: string): Promise<number> {
-    const trades = await db.Trade.findAll({
-      where: { accountId, status: 'closed' },
-      attributes: ['pnl'],
-    });
-    if (trades.length === 0) return 0;
-    return trades.reduce((a,b) => a + b.pnl, 0) / trades.length;
-  }
-
   static async getProfitFactor(accountId: string): Promise<number> {
-    const trades = await db.Trade.findAll({
+    const trades = await Trade.findAll({
       where: { accountId, status: 'closed' },
       attributes: ['pnl'],
     });
@@ -36,7 +29,7 @@ export class TradeMetricsComputer {
   }
 
   static async getMaxDrawdown(accountId: string): Promise<number> {
-    const trades = await db.Trade.findAll({
+    const trades = await Trade.findAll({
       where: { accountId, status: 'closed' },
       order: [['closeTimestamp', 'ASC']],
       attributes: ['pnl'],
@@ -51,5 +44,15 @@ export class TradeMetricsComputer {
       if (dd > maxDD) maxDD = dd;
     }
     return maxDD;
+  }
+
+  static async getWinRate(accountId: string): Promise<number> {
+    const trades = await Trade.findAll({
+      where: { accountId, status: 'closed' },
+      attributes: ['pnl'],
+    });
+    if (trades.length === 0) return 0;
+    const wins = trades.filter(t => t.pnl > 0).length;
+    return (wins / trades.length) * 100;
   }
 }

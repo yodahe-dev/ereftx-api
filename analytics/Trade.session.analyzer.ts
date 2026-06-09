@@ -1,10 +1,10 @@
-// analytics/Trade.session.analyzer.ts
 import db from '../models';
 import { Op } from 'sequelize';
 
 const { TradingSession } = db;
 
 export class TradeSessionAnalyzer {
+
   static async getSessionPerformance(accountId: string, start: Date, end: Date): Promise<any[]> {
     const trades = await db.Trade.findAll({
       where: {
