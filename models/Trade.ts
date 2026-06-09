@@ -4,6 +4,8 @@ export type TradeDirection = 'long' | 'short';
 export type TradeStatus = 'open' | 'closed' | 'cancelled';
 export type LiquidityType = 'buyStop' | 'sellStop' | 'buyLimit' | 'sellLimit' | 'market';
 export type MSS_Type = 'bearish' | 'bullish' | 'none';
+export type LuckFactor = 'luck' | 'skill' | 'both';
+export type PlanQuality = 'bad' | 'good' | 'great';
 
 interface TradeAttributes {
   id: string;
@@ -16,8 +18,8 @@ interface TradeAttributes {
   stopLoss: number;
   takeProfit: number | null;
   lotSize: number;
-  riskPercent: number;          // % of account risked
-  pnl: number;                  // realised profit/loss
+  riskPercent: number;
+  pnl: number;
   pips: number | null;
   swap: number | null;
   commission: number | null;
@@ -33,27 +35,65 @@ interface TradeAttributes {
   closeOverlapId: string | null;
   openTimestamp: Date;
   closeTimestamp: Date | null;
-  // Forward planning (flexible: link to plan but allow deviation)
+  // Forward planning (flexible)
   plannedEntryId: string | null;
-  // Risk rule violation flags (NEW – flexible)
+  // Risk rule violation flags
   violatesRiskRules: boolean;
-  riskViolationDetails: object | null;   // JSON detailing which rule(s) were violated
-  isEmergencyExit: boolean;              // if user exited due to market spike
-  deviationFromPlan: boolean;            // if actual differs from plan
-  // Psychological / journal
+  riskViolationDetails: object | null;
+  isEmergencyExit: boolean;
+  deviationFromPlan: boolean;
+  // ========== NEW JOURNALING / REFLECTION FIELDS ==========
+  journalNotes: string | null;          // general free writing
+  downside: string | null;              // what went wrong / could improve
+  greatside: string | null;             // what went right / strengths
+  lossReason: string | null;            // why I lost (for losing trades)
+  winReason: string | null;             // why I won (for winning trades)
+  luckFactor: LuckFactor | null;        // luck, skill, or both
+  planQuality: PlanQuality | null;      // subjective quality of the trade plan
+  deviationReason: string | null;       // why deviated from the plan (if any)
+  // Legacy psychological fields (keep for compatibility)
   emotion: string | null;
   mistake: string | null;
-  notes: string | null;
+  notes: string | null;                 // legacy, can be merged with journalNotes
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 type TradeCreationAttributes = Optional<
   TradeAttributes,
-  'id' | 'exitPrice' | 'takeProfit' | 'pnl' | 'pips' | 'swap' | 'commission' | 'mss' | 'bos' |
-  'premiumDiscount' | 'openSessionId' | 'closeSessionId' | 'openOverlapId' | 'closeOverlapId' |
-  'closeTimestamp' | 'plannedEntryId' | 'violatesRiskRules' | 'riskViolationDetails' | 'isEmergencyExit' |
-  'deviationFromPlan' | 'emotion' | 'mistake' | 'notes' | 'createdAt' | 'updatedAt'
+  | 'id'
+  | 'exitPrice'
+  | 'takeProfit'
+  | 'pnl'
+  | 'pips'
+  | 'swap'
+  | 'commission'
+  | 'mss'
+  | 'bos'
+  | 'premiumDiscount'
+  | 'openSessionId'
+  | 'closeSessionId'
+  | 'openOverlapId'
+  | 'closeOverlapId'
+  | 'closeTimestamp'
+  | 'plannedEntryId'
+  | 'violatesRiskRules'
+  | 'riskViolationDetails'
+  | 'isEmergencyExit'
+  | 'deviationFromPlan'
+  | 'journalNotes'
+  | 'downside'
+  | 'greatside'
+  | 'lossReason'
+  | 'winReason'
+  | 'luckFactor'
+  | 'planQuality'
+  | 'deviationReason'
+  | 'emotion'
+  | 'mistake'
+  | 'notes'
+  | 'createdAt'
+  | 'updatedAt'
 >;
 
 export default (sequelize: Sequelize) => {
@@ -91,6 +131,15 @@ export default (sequelize: Sequelize) => {
     public riskViolationDetails!: object | null;
     public isEmergencyExit!: boolean;
     public deviationFromPlan!: boolean;
+    // Journaling
+    public journalNotes!: string | null;
+    public downside!: string | null;
+    public greatside!: string | null;
+    public lossReason!: string | null;
+    public winReason!: string | null;
+    public luckFactor!: LuckFactor | null;
+    public planQuality!: PlanQuality | null;
+    public deviationReason!: string | null;
     public emotion!: string | null;
     public mistake!: string | null;
     public notes!: string | null;
@@ -109,7 +158,7 @@ export default (sequelize: Sequelize) => {
       exitPrice: { type: DataTypes.DECIMAL(18, 6), allowNull: true },
       stopLoss: { type: DataTypes.DECIMAL(18, 6), allowNull: false },
       takeProfit: { type: DataTypes.DECIMAL(18, 6), allowNull: true },
-      lotSize: { type: DataTypes.DECIMAL(10, 2), allowNull: false, validate: { min: 0 } }, // allow 0? but we keep min:0
+      lotSize: { type: DataTypes.DECIMAL(10, 2), allowNull: false, validate: { min: 0 } },
       riskPercent: { type: DataTypes.DECIMAL(5, 2), allowNull: false, defaultValue: 1 },
       pnl: { type: DataTypes.DECIMAL(18, 4), allowNull: false, defaultValue: 0, get() { return Number(this.getDataValue('pnl')); } },
       pips: { type: DataTypes.DECIMAL(10, 2), allowNull: true },
@@ -130,6 +179,15 @@ export default (sequelize: Sequelize) => {
       riskViolationDetails: { type: DataTypes.JSON, allowNull: true },
       isEmergencyExit: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
       deviationFromPlan: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+      // Journaling fields
+      journalNotes: { type: DataTypes.TEXT, allowNull: true },
+      downside: { type: DataTypes.TEXT, allowNull: true },
+      greatside: { type: DataTypes.TEXT, allowNull: true },
+      lossReason: { type: DataTypes.TEXT, allowNull: true },
+      winReason: { type: DataTypes.TEXT, allowNull: true },
+      luckFactor: { type: DataTypes.ENUM('luck', 'skill', 'both'), allowNull: true },
+      planQuality: { type: DataTypes.ENUM('bad', 'good', 'great'), allowNull: true },
+      deviationReason: { type: DataTypes.TEXT, allowNull: true },
       emotion: { type: DataTypes.STRING(100), allowNull: true },
       mistake: { type: DataTypes.STRING(255), allowNull: true },
       notes: { type: DataTypes.TEXT, allowNull: true },
@@ -146,6 +204,9 @@ export default (sequelize: Sequelize) => {
         { fields: ['symbol'] },
         { fields: ['openOverlapId'] },
         { fields: ['violatesRiskRules'] },
+        // Optional indexes for journaling analytics
+        { fields: ['luckFactor'] },
+        { fields: ['planQuality'] },
       ],
     }
   );

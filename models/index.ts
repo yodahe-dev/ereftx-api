@@ -46,6 +46,7 @@ import initSessionPerformance from "./SessionPerformance";
 import initUserTradingSchedule from "./UserTradingSchedule";
 import initSessionNotification from "./SessionNotification";
 import initSessionStatistic from "./SessionStatistic";
+import initHoliday from "./Holiday";
 
 // Initialize existing models
 const Product = initProduct(sequelize);
@@ -77,6 +78,7 @@ const SessionPerformance = initSessionPerformance(sequelize);
 const UserTradingSchedule = initUserTradingSchedule(sequelize);
 const SessionNotification = initSessionNotification(sequelize);
 const SessionStatistic = initSessionStatistic(sequelize);
+const Holiday = initHoliday(sequelize);
 
 export const models = {
   Product,
@@ -104,6 +106,7 @@ export const models = {
   UserTradingSchedule,
   SessionNotification,
   SessionStatistic,
+  Holiday,
 };
 
 export interface DB {
@@ -133,6 +136,7 @@ export interface DB {
   UserTradingSchedule: typeof UserTradingSchedule;
   SessionNotification: typeof SessionNotification;
   SessionStatistic: typeof SessionStatistic;
+  Holiday: typeof Holiday;
 }
 
 const db: DB = {

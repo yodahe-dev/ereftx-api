@@ -2,7 +2,6 @@ import { DataTypes, Model, Sequelize, Optional } from 'sequelize';
 
 interface UserTradingScheduleAttributes {
   id: string;
-  userId: string;
   sessionId: string | null;
   dayOfWeek: number;
   startHourLocal: number;
@@ -25,7 +24,6 @@ export default (sequelize: Sequelize) => {
     implements UserTradingScheduleAttributes
   {
     public id!: string;
-    public userId!: string;
     public sessionId!: string | null;
     public dayOfWeek!: number;
     public startHourLocal!: number;
@@ -40,7 +38,6 @@ export default (sequelize: Sequelize) => {
   UserTradingSchedule.init(
     {
       id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-      userId: { type: DataTypes.UUID, allowNull: false },
       sessionId: { type: DataTypes.UUID, allowNull: true, references: { model: 'trading_sessions', key: 'id' }, onDelete: 'SET NULL' },
       dayOfWeek: { type: DataTypes.TINYINT, allowNull: false, validate: { min: 0, max: 6 } },
       startHourLocal: { type: DataTypes.TINYINT, allowNull: false, validate: { min: 0, max: 23 } },
@@ -53,7 +50,7 @@ export default (sequelize: Sequelize) => {
       sequelize,
       tableName: 'user_trading_schedules',
       timestamps: true,
-      indexes: [{ fields: ['userId'] }, { fields: ['dayOfWeek'] }],
+      indexes: [{ fields: ['dayOfWeek'] }],
     }
   );
 
