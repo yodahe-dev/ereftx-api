@@ -1,4 +1,3 @@
-// services/trade.service.ts
 import db from '../models';
 import { FilterBuilder, FilterCondition } from '../search/filter.builder';
 
@@ -6,10 +5,7 @@ const { TradingSession, TradingAccount } = db;
 
 export class TradeService {
   static async create(data: any): Promise<any> {
-    // Automatically resolve session from openTimestamp if not provided
     if (!data.openSessionId && data.openTimestamp) {
-      // In a real implementation, you'd call SessionService to get the session at that time
-      // For simplicity, we leave it as is; the controller can pre‑resolve.
     }
     const trade = await db.Trade.create(data);
     return trade;

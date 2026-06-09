@@ -1,24 +1,17 @@
-// search/TradingAccount.search.service.ts
 import db from '../models';
 import { FilterBuilder, FilterCondition } from './filter.builder';
 import { QueryCache } from './cache.service';
-import { TradeSearchService } from './Trade.search.service';
+import { SymbolTrie } from './trie.service';
 
-const TrieService = TradeSearchService;
 const { TradingAccount } = db;
-
-type NameTrie = {
-  insert(value: string): void;
-  searchPrefix(prefix: string): string[];
-};
 
 export class TradingAccountSearchService {
   private cache: QueryCache;
-  private nameTrie: NameTrie;
+  private nameTrie: SymbolTrie;
 
   constructor() {
     this.cache = new QueryCache(300);
-    this.nameTrie = new TrieService() as unknown as NameTrie;
+    this.nameTrie = new SymbolTrie();
   }
 
   async init(): Promise<void> {
@@ -58,6 +51,6 @@ export class TradingAccountSearchService {
   }
 
   async autoCompleteName(prefix: string): Promise<string[]> {
-    return (this.nameTrie as any).searchPrefix(prefix);
+    return this.nameTrie.searchPrefix(prefix);
   }
 }

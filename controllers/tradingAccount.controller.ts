@@ -45,29 +45,49 @@ export class TradingAccountController {
     }
   }
 
-  static async delete(req: Request, res: Response): Promise<void> {
-    try {
-      const { id } = req.params;
-      const account = await TradingAccount.findByPk(id as string);
-      if (!account) throw new Error('Account not found');
-      await account.destroy();
-      res.status(204).send();
-    } catch (error: any) {
-      res.status(400).json({ success: false, message: error.message });
-    }
-  }
+static async delete(req: Request, res: Response): Promise<void> {
+  try {
+    const { id } = req.params;
 
-  static async list(req: Request, res: Response): Promise<void> {
-    try {
-      const filters: FilterCondition[] = req.body.filters || [];
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 50;
-      const result = await searchService.searchAccounts(filters, page, limit);
-      res.json({ success: true, ...result });
-    } catch (error: any) {
-      res.status(400).json({ success: false, message: error.message });
+    const account = await TradingAccount.findByPk(id as string);
+
+    if (!account) {
+      res.status(404).json({
+        success: false,
+        message: 'Account not found',
+      });
+      return;
     }
+
+    await account.destroy({ force: true }); // hard delete
+
+    res.status(204).send();
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
+}
+
+static async list(req: Request, res: Response): Promise<void> {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 50;
+    const search = (req.query.search as string) || '';
+    
+    // Build filters from search term
+    const filters: FilterCondition[] = [];
+    if (search) {
+      filters.push({ field: 'name', operator: 'contains', value: search });
+    }
+    
+    const result = await searchService.searchAccounts(filters, page, limit);
+    res.json({ success: true, rows: result.rows, total: result.total, page, limit });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+}
 
   static async autoCompleteName(req: Request, res: Response): Promise<void> {
     try {
