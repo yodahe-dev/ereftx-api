@@ -15,7 +15,6 @@ import expensePlanRouter from "./Router/expensePlan.router";
 import expenseCategoryRouter from "./Router/expenseCategory.router";
 import stockAnalyticsRouter from "./analytics/stockAnalytics/routes/stockAnalytics.router";
 
-
 dotenv.config();
 
 const app = express();
@@ -29,11 +28,20 @@ const PORT = Number(process.env.PORT) || 9000;
 app.use(
   cors({
     origin: (origin, callback) => {
-      const allowedOrigins = process.env.CORS_ORIGIN 
-        ? process.env.CORS_ORIGIN.split(",") 
-        : ["http://localhost:3000"];
-      
-      // Check if the request origin is in the allowed list
+      const allowedOrigins = [
+        "http://localhost:3000",
+        "http://100.91.219.27:3000",
+        "http://100.91.219.27:3001" 
+      ];
+      if (process.env.CORS_ORIGIN) {
+        const envOrigins = process.env.CORS_ORIGIN.split(",");
+        envOrigins.forEach((url) => {
+          const trimmedUrl = url.trim();
+          if (trimmedUrl && !allowedOrigins.includes(trimmedUrl)) {
+            allowedOrigins.push(trimmedUrl);
+          }
+        });
+      }
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
