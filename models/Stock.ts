@@ -33,6 +33,7 @@ export default (sequelize: Sequelize) => {
 
     public readonly createdAt!: Date;
     public readonly updatedAt!: Date;
+    product: any;
   }
 
   Stock.init(

@@ -19,19 +19,24 @@ export const restockSchema = z.object({
   addSingles: z.number().int().min(0).default(0),
   notes: z.string().optional(),
   isFree: z.boolean().default(false),
-});
+
+  // Price handling
+  priceId: z.string().uuid().optional(),
+  newBuyPricePerBox: z.number().positive().optional(),
+  newSellPricePerBox: z.number().positive().optional(),
+  newSellPricePerUnit: z.number().positive().optional(),
+}).refine(
+  (data) => !(data.priceId && data.newBuyPricePerBox),
+  { message: "Provide either priceId OR newBuyPricePerBox, not both" }
+);
 
 export const exchangeSchema = z.object({
-  sourceProductId: z.string().uuid({ message: "Invalid Source Product ID" }),
-  targetProductId: z.string().uuid({ message: "Invalid Target Product ID" }),
-  
-  exchangeType: z.enum(["box", "single"] as const, {
-    message: "Exchange type must be 'box' or 'single'",
-  }),
-
-  sourceQuantity: z.number().positive("Quantity must be greater than 0"),
-
+  sourceProductId: z.string().uuid(),
+  targetProductId: z.string().uuid(),
+  exchangeType: z.enum(["box", "single"]),
+  sourceQuantity: z.number().positive(),
   notes: z.string().max(255).optional(),
 });
+
 
 export type ExchangeInput = z.infer<typeof exchangeSchema>;
