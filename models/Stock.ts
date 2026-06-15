@@ -25,6 +25,7 @@ export default (sequelize: Sequelize) => {
     extends Model<StockAttributes, StockCreationAttributes>
     implements StockAttributes
   {
+    [x: string]: any;
     public id!: string;
     public productId!: string;
     public boxQuantity!: number;

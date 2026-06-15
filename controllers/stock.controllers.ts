@@ -7,9 +7,8 @@ import {
   restockService,
   updateStockService,
   updateStockHistoryPriceService,
-  getProductPricesService,
-  activatePriceService,
   getStockPriceLayersService,
+  assignPriceToStockService,
 } from "../service/stock.service";
 import { processExchangeService } from "../service/exchange.service";
 import {
@@ -17,6 +16,7 @@ import {
   updateStockSchema,
   restockSchema,
   exchangeSchema,
+  assignPriceToStockSchema,
 } from "../validations/stock.schema";
 
 const { Stock, Product, Exchange, StockHistory } = db;
@@ -27,6 +27,7 @@ function getId(value: string | string[] | undefined): string | null {
   return value;
 }
 
+// ========== STOCK CRUD ==========
 export const createStock = async (req: Request, res: Response) => {
   try {
     const validated = createStockSchema.parse(req.body);
@@ -51,73 +52,6 @@ export const getStocks = async (_: Request, res: Response) => {
   } catch (error) {
     console.error("GET STOCKS ERROR:", error);
     return res.status(500).json({ message: "Internal server error" });
-  }
-};
-
-// GET /stocks/prices - advanced price listing (already defined in your service)
-export const getProductPrices = async (req: Request, res: Response) => {
-  try {
-    const {
-      productId,
-      active,
-      startDate,
-      endDate,
-      minBuyPrice,
-      maxBuyPrice,
-      page,
-      limit,
-      sortBy,
-      sortOrder,
-    } = req.query;
-
-    const filters: any = {};
-    if (productId && typeof productId === 'string') filters.productId = productId;
-    if (active !== undefined) filters.active = active === 'true';
-    if (startDate) filters.startDate = new Date(startDate as string);
-    if (endDate) filters.endDate = new Date(endDate as string);
-    if (minBuyPrice) filters.minBuyPrice = parseFloat(minBuyPrice as string);
-    if (maxBuyPrice) filters.maxBuyPrice = parseFloat(maxBuyPrice as string);
-    if (page) filters.page = parseInt(page as string);
-    if (limit) filters.limit = parseInt(limit as string);
-    if (sortBy) filters.sortBy = sortBy as string;
-    if (sortOrder) filters.sortOrder = sortOrder as 'ASC' | 'DESC';
-
-    const result = await getProductPricesService(filters);
-    return res.status(200).json(result);
-  } catch (error: any) {
-    console.error("GET PRODUCT PRICES ERROR:", error);
-    return res.status(400).json({ message: error.message || "Internal server error" });
-  }
-};
-
-// GET /stocks/:id/price-layers - breakdown of current stock by purchase price
-export const getStockPriceLayers = async (req: Request, res: Response) => {
-  try {
-    const id = getId(req.params.id);
-    if (!id || !isUUID(id)) {
-      return res.status(400).json({ message: "Invalid stock ID" });
-    }
-
-    const layers = await getStockPriceLayersService(id);
-    return res.status(200).json(layers);
-  } catch (error: any) {
-    console.error("GET STOCK PRICE LAYERS ERROR:", error);
-    return res.status(400).json({ message: error.message || "Internal server error" });
-  }
-};
-
-export const activatePrice = async (req: Request, res: Response) => {
-  try {
-    const priceId = getId(req.params.priceId);
-    if (!priceId || !isUUID(priceId)) {
-      return res.status(400).json({ message: "Invalid priceId" });
-    }
-    const { productId } = req.body; // optional, for extra safety
-    const activated = await activatePriceService(priceId, productId);
-    return res.status(200).json(activated);
-  } catch (error: any) {
-    console.error("ACTIVATE PRICE ERROR:", error);
-    return res.status(400).json({ message: error.message });
   }
 };
 
@@ -161,42 +95,6 @@ export const updateStock = async (req: Request, res: Response) => {
   }
 };
 
-export const restockProduct = async (req: Request, res: Response) => {
-  try {
-    const id = getId(req.params.id);
-    if (!id || !isUUID(id)) {
-      return res.status(400).json({ message: "Invalid ID" });
-    }
-
-    const validated = restockSchema.parse(req.body);
-    const stock = await restockService(id, validated);
-    return res.status(200).json(stock);
-  } catch (error: any) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json(error.flatten());
-    }
-    console.error("RESTOCK ERROR:", error);
-    return res.status(400).json({ message: error.message || "Internal server error" });
-  }
-};
-
-export const exchangeProducts = async (req: Request, res: Response) => {
-  try {
-    const validatedData = exchangeSchema.parse(req.body);
-    const result = await processExchangeService(validatedData);
-    return res.status(200).json({
-      message: "Exchange completed successfully",
-      data: result,
-    });
-  } catch (error: any) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json(error.flatten());
-    }
-    console.error("EXCHANGE ERROR:", error);
-    return res.status(400).json({ message: error.message || "Internal server error" });
-  }
-};
-
 export const deleteStock = async (req: Request, res: Response) => {
   try {
     const id = getId(req.params.id);
@@ -217,6 +115,45 @@ export const deleteStock = async (req: Request, res: Response) => {
   }
 };
 
+// ========== RESTOCK ==========
+export const restockProduct = async (req: Request, res: Response) => {
+  try {
+    const id = getId(req.params.id);
+    if (!id || !isUUID(id)) {
+      return res.status(400).json({ message: "Invalid ID" });
+    }
+
+    const validated = restockSchema.parse(req.body);
+    const stock = await restockService(id, validated);
+    return res.status(200).json(stock);
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json(error.flatten());
+    }
+    console.error("RESTOCK ERROR:", error);
+    return res.status(400).json({ message: error.message || "Internal server error" });
+  }
+};
+
+// ========== EXCHANGE ==========
+export const exchangeProducts = async (req: Request, res: Response) => {
+  try {
+    const validatedData = exchangeSchema.parse(req.body);
+    const result = await processExchangeService(validatedData);
+    return res.status(200).json({
+      message: "Exchange completed successfully",
+      data: result,
+    });
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json(error.flatten());
+    }
+    console.error("EXCHANGE ERROR:", error);
+    return res.status(400).json({ message: error.message || "Internal server error" });
+  }
+};
+
+// ========== STOCK HISTORY ==========
 export const getStockHistory = async (req: Request, res: Response) => {
   try {
     const productId = getId(req.params.productId);
@@ -267,6 +204,41 @@ export const updateHistoryPrice = async (req: Request, res: Response) => {
     return res.status(200).json(updatedHistory);
   } catch (error: any) {
     console.error("UPDATE HISTORY PRICE ERROR:", error);
+    return res.status(400).json({ message: error.message || "Internal server error" });
+  }
+};
+
+// ========== STOCK PRICE LAYERS ==========
+export const getStockPriceLayers = async (req: Request, res: Response) => {
+  try {
+    const id = getId(req.params.id);
+    if (!id || !isUUID(id)) {
+      return res.status(400).json({ message: "Invalid stock ID" });
+    }
+
+    const layers = await getStockPriceLayersService(id);
+    return res.status(200).json(layers);
+  } catch (error: any) {
+    console.error("GET STOCK PRICE LAYERS ERROR:", error);
+    return res.status(400).json({ message: error.message || "Internal server error" });
+  }
+};
+
+// ========== ASSIGN PRICE TO PORTION OF STOCK ==========
+export const assignPriceToStock = async (req: Request, res: Response) => {
+  try {
+    const stockId = getId(req.params.stockId);
+    if (!stockId || !isUUID(stockId)) {
+      return res.status(400).json({ message: "Invalid stockId" });
+    }
+    const validated = assignPriceToStockSchema.parse(req.body);
+    const result = await assignPriceToStockService(stockId, validated);
+    return res.status(200).json(result);
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json(error.flatten());
+    }
+    console.error("ASSIGN PRICE TO STOCK ERROR:", error);
     return res.status(400).json({ message: error.message || "Internal server error" });
   }
 };
