@@ -20,7 +20,7 @@ import stockAnalyticsRouter from "./analytics/stockAnalytics/routes/stockAnalyti
 dotenv.config();
 
 const app = express();
-const PORT = Number(process.env.PORT) || 2100;
+const PORT = Number(process.env.PORT) || 5555;
 
 /**
  * =====================
