@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "nodemon server.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "deploy": "git push origin main && ssh yodahe@100.91.219.27 \"~/env/deploy-prod.sh\""
   },
   "keywords": [],
   "author": "",

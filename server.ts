@@ -16,11 +16,12 @@ import expenseCategoryRouter from "./Router/expenseCategory.router";
 import priceHistoryRoutes from "./Router/priceHistory.routes";
 
 import stockAnalyticsRouter from "./analytics/stockAnalytics/routes/stockAnalytics.router";
+import salesAnalyticsRouter from "./analytics/salesAnalytics/routes/salesAnalytics.router";
 
 dotenv.config();
 
 const app = express();
-const PORT = Number(process.env.PORT) || 5555;
+const PORT = Number(process.env.PORT) || 1111;
 
 /**
  * =====================
@@ -73,6 +74,7 @@ app.use("/api/recurring-expenses", recurringExpenseRouter);
 app.use("/api/expense-categories", expenseCategoryRouter);
 app.use("/api/price-history", priceHistoryRoutes);
 app.use("/api/analytics/stock", stockAnalyticsRouter);
+app.use("/api/analytics/sales", salesAnalyticsRouter);
 
 /**
  * HEALTH CHECK
