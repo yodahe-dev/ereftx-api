@@ -21,7 +21,7 @@ import salesAnalyticsRouter from "./analytics/salesAnalytics/routes/salesAnalyti
 dotenv.config();
 
 const app = express();
-const PORT = Number(process.env.PORT) || 1111;
+const PORT = Number(process.env.PORT) || 9000;
 
 /**
  * =====================
