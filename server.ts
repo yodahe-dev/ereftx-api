@@ -16,11 +16,13 @@ import priceHistoryRoutes from "./Router/priceHistory.routes";
 
 import stockAnalyticsRouter from "./analytics/stockAnalytics/routes/stockAnalytics.router";
 import salesAnalyticsRouter from "./analytics/salesAnalytics/routes/salesAnalytics.router";
+import expenseAnalyticsRouter from "./analytics/expenseAnalytics/routes/expenseAnalytics.router";
+
 
 dotenv.config();
 
 const app = express();
-const PORT = Number(process.env.PORT) || 1111;
+const PORT = Number(process.env.PORT) || 2222;
 
 // CORS
 app.use(
@@ -66,6 +68,7 @@ app.use("/api/expense-categories", expenseCategoryRouter);
 app.use("/api/price-history", priceHistoryRoutes);
 app.use("/api/analytics/stock", stockAnalyticsRouter);
 app.use("/api/analytics/sales", salesAnalyticsRouter);
+app.use("/api/analytics/expense", expenseAnalyticsRouter);
 
 // ---------- HEALTH ----------
 app.get("/", (_req: Request, res: Response) => {
