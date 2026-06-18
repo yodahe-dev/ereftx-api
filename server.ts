@@ -8,7 +8,6 @@ import BrandRouter from "./Router/brand.router";
 import ProductRouter from "./Router/product.router";
 import stcokRouter from "./Router/stock.router";
 import Sales from "./Router/sale.routes";
-
 import expanceRouter from "./Router/expense.router";
 import recurringExpenseRouter from "./Router/recurringExpense.router";
 import expensePlanRouter from "./Router/expensePlan.router";
@@ -21,20 +20,16 @@ import salesAnalyticsRouter from "./analytics/salesAnalytics/routes/salesAnalyti
 dotenv.config();
 
 const app = express();
-const PORT = Number(process.env.PORT) || 9000;
+const PORT = Number(process.env.PORT) || 1111;
 
-/**
- * =====================
- * MIDDLEWARE
- * =====================
- */
+// CORS
 app.use(
   cors({
     origin: (origin, callback) => {
       const allowedOrigins = [
         "http://localhost:3000",
         "http://100.91.219.27:3000",
-        "http://100.91.219.27:3001" 
+        "http://100.91.219.27:3001",
       ];
       if (process.env.CORS_ORIGIN) {
         const envOrigins = process.env.CORS_ORIGIN.split(",");
@@ -57,11 +52,7 @@ app.use(
 
 app.use(express.json());
 
-/**
- * =====================
- * ROUTES
- * =====================
- */
+// ---------- ROUTES ----------
 app.use("/api/categories", CategoryRouter);
 app.use("/api/brands", BrandRouter);
 app.use("/api/packagings", PackagingRouter);
@@ -76,26 +67,18 @@ app.use("/api/price-history", priceHistoryRoutes);
 app.use("/api/analytics/stock", stockAnalyticsRouter);
 app.use("/api/analytics/sales", salesAnalyticsRouter);
 
-/**
- * HEALTH CHECK
- */
+// ---------- HEALTH ----------
 app.get("/", (_req: Request, res: Response) => {
   res.status(200).send("EREFTX API running...");
 });
 
-/**
- * =====================
- * START SERVER
- * =====================
- */
+// Start server
 (async () => {
   try {
     await db.sequelize.authenticate();
     console.log("DB connected");
 
-    await db.sequelize.sync({
-      alter: false,
-    });
+    await db.sequelize.sync({ alter: false });
 
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`Server running on http://localhost:${PORT}`);
