@@ -63,14 +63,6 @@ export class ExpenseCategoryService {
     return category.toJSON();
   }
 
-  /**
-   * Delete a category with optional force and reassignment.
-   * - If force=false and category has subcategories or expenses, throws error.
-   * - If force=true:
-   *   - If reassignToCategoryId is provided: all expenses of this category (and its subcategories) are moved to that category.
-   *   - If no reassignToCategoryId: all expenses are deleted.
-   *   - All subcategories are recursively deleted (with same reassign logic).
-   */
   static async delete(id: string, options?: { force?: boolean; reassignToCategoryId?: string }) {
     const category = await db.ExpenseCategory.findByPk(id);
     if (!category) throw new Error('Expense category not found');
@@ -78,18 +70,13 @@ export class ExpenseCategoryService {
     const force = options?.force === true;
     const reassignId = options?.reassignToCategoryId;
 
-    // Validate reassign target if provided
-    if (reassignId) {
-      if (reassignId === id) throw new Error('Cannot reassign expenses to the same category being deleted');
-      const targetCategory = await db.ExpenseCategory.findByPk(reassignId);
-      if (!targetCategory) throw new Error('Reassignment target category not found');
-    }
+    if (reassignId && reassignId === id) throw new Error('Cannot reassign to itself');
 
     const childrenCount = await db.ExpenseCategory.count({ where: { parentId: id } });
     const expensesCount = await db.Expense.count({ where: { categoryId: id } });
 
     if (!force && (childrenCount > 0 || expensesCount > 0)) {
-      const reasons = [];
+      const reasons: string[] = []; // ✅ FIXED: explicit string[]
       if (childrenCount > 0) reasons.push(`${childrenCount} subcategory(s)`);
       if (expensesCount > 0) reasons.push(`${expensesCount} expense(s)`);
       throw new Error(`Cannot delete category because it has ${reasons.join(' and ')}. Use force=true to delete subcategories and optionally reassign expenses.`);
@@ -100,13 +87,11 @@ export class ExpenseCategoryService {
       // 1. Handle expenses of this category
       if (expensesCount > 0) {
         if (reassignId) {
-          // Reassign expenses to target category
           await db.Expense.update(
             { categoryId: reassignId },
             { where: { categoryId: id }, transaction }
           );
         } else {
-          // Delete all expenses in this category
           await db.Expense.destroy({ where: { categoryId: id }, transaction });
         }
       }
@@ -133,7 +118,6 @@ export class ExpenseCategoryService {
       transaction,
     });
     for (const sub of subcategories) {
-      // Handle expenses of this subcategory
       const subExpensesCount = await db.Expense.count({ where: { categoryId: sub.id }, transaction });
       if (subExpensesCount > 0) {
         if (reassignToCategoryId) {
@@ -145,9 +129,7 @@ export class ExpenseCategoryService {
           await db.Expense.destroy({ where: { categoryId: sub.id }, transaction });
         }
       }
-      // Recursively delete its own children
       await this.deleteSubcategoriesRecursive(sub.id, reassignToCategoryId, transaction);
-      // Delete the subcategory
       await sub.destroy({ transaction });
     }
   }
