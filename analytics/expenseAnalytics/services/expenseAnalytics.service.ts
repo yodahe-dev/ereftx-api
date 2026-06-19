@@ -398,7 +398,7 @@ export class ExpenseAnalyticsService {
       dayMap[row.day] = parseFloat(row.total);
     });
 
-    const days = [];
+    const days: Array<{ date: string; total: number; notes: any[] }> = [];
     const current = new Date(startDate);
     while (current <= endDate) {
       const dayStr = current.toISOString().slice(0, 10);
