@@ -80,7 +80,7 @@ export class ExpensePlanController {
     try {
       const today = new Date();
       const count = await ExpensePlanService.batchUpdateStatusByCondition(
-        (plan) => plan.targetDate && new Date(plan.targetDate) < today && plan.status !== 'completed',
+        (plan: any) => plan.targetDate && new Date(plan.targetDate) < today && plan.status !== 'completed',
         'cancelled',
         500
       );
@@ -94,7 +94,6 @@ export class ExpensePlanController {
     if (error instanceof ZodError) {
       res.status(400).json({ success: false, errors: error.flatten() });
     } else if (error instanceof Error) {
-      // Use 409 for linked expenses conflict
       const status = error.message.includes('Cannot delete plan with linked expenses') ? 409 : 400;
       res.status(status).json({ success: false, message: error.message });
     } else {
