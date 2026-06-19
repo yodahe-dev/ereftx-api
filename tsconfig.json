@@ -1,13 +1,17 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "module": "CommonJS",
-    "moduleResolution": "Node",
-    "ignoreDeprecations": "6.0",
-    "rootDir": ".",
-    "outDir": "dist",
-    "esModuleInterop": true,
+    "module": "commonjs",
     "strict": true,
-    "skipLibCheck": true
-  }
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "outDir": "./dist",
+    "rootDir": "./",
+    "typeRoots": ["./node_modules/@types"],
+    "types": ["node", "express", "cors"],
+    "noImplicitAny": false   // ← add this to fix the callback errors
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "dist"]
 }
