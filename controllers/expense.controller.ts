@@ -8,20 +8,12 @@ import {
 import { ZodError } from 'zod';
 
 export class ExpenseController {
-  /**
-   * Helper: Extract single string ID from req.params
-   */
   private static getId(req: Request): string {
     const { id } = req.params;
-    if (Array.isArray(id) || !id) {
-      throw new Error('Invalid expense ID');
-    }
+    if (Array.isArray(id) || !id) throw new Error('Invalid expense ID');
     return id;
   }
 
-  /**
-   * Create a new expense
-   */
   static async create(req: Request, res: Response): Promise<void> {
     try {
       const validated = createExpenseSchema.parse(req.body);
@@ -32,9 +24,6 @@ export class ExpenseController {
     }
   }
 
-  /**
-   * Get expense by ID
-   */
   static async get(req: Request, res: Response): Promise<void> {
     try {
       const id = this.getId(req);
@@ -45,9 +34,6 @@ export class ExpenseController {
     }
   }
 
-  /**
-   * Update an existing expense
-   */
   static async update(req: Request, res: Response): Promise<void> {
     try {
       const id = this.getId(req);
@@ -59,9 +45,6 @@ export class ExpenseController {
     }
   }
 
-  /**
-   * Delete an expense
-   */
   static async delete(req: Request, res: Response): Promise<void> {
     try {
       const id = this.getId(req);
@@ -72,9 +55,6 @@ export class ExpenseController {
     }
   }
 
-  /**
-   * List expenses with pagination, filters, sorting
-   */
   static async list(req: Request, res: Response): Promise<void> {
     try {
       const query = expenseQuerySchema.parse(req.query);
@@ -85,9 +65,6 @@ export class ExpenseController {
     }
   }
 
-  /**
-   * Get summary stats (total, by category, by reference type)
-   */
   static async summary(req: Request, res: Response): Promise<void> {
     try {
       const { startDate, endDate } = req.query;
@@ -101,9 +78,6 @@ export class ExpenseController {
     }
   }
 
-  /**
-   * Centralized error handler
-   */
   private static handleError(error: unknown, res: Response): void {
     if (error instanceof ZodError) {
       res.status(400).json({ success: false, errors: error.flatten() });
