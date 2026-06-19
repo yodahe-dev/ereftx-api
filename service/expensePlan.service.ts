@@ -1,6 +1,6 @@
 import db from '../models';
 import { AdvancedCache } from '../utils/cache.util';
-import { Op, fn, col, WhereOptions, Order } from 'sequelize';
+import { Op, WhereOptions, Order } from 'sequelize';
 import {
   CreateExpensePlanInput,
   UpdateExpensePlanInput,
@@ -12,7 +12,6 @@ export class ExpensePlanService {
   private static cache = new AdvancedCache<string, any>(500, 120);
 
   static async create(data: CreateExpensePlanInput) {
-    // Ensure amount is a number
     const targetAmount = typeof data.targetAmount === 'string' ? parseFloat(data.targetAmount) : data.targetAmount;
     if (isNaN(targetAmount) || targetAmount <= 0) {
       throw new Error('Target amount must be a positive number');
@@ -146,7 +145,46 @@ export class ExpensePlanService {
     return total;
   }
 
-  // ... (other methods unchanged) ...
+  // ── NEW: Batch update status based on condition ──
+  static async batchUpdateStatusByCondition(
+    condition: (plan: any) => boolean,
+    newStatus: typeof ExpensePlanStatusEnum[keyof typeof ExpensePlanStatusEnum],
+    batchSize: number = 1000
+  ): Promise<number> {
+    let updatedCount = 0;
+    let offset = 0;
+    while (true) {
+      const statusValue = String(newStatus);
+      const plans = await db.ExpensePlan.findAll({
+        where: { status: { [Op.ne]: statusValue } },
+        offset,
+        limit: batchSize,
+        raw: true,
+      });
+      if (plans.length === 0) break;
+      const idsToUpdate: string[] = [];
+      for (const plan of plans) {
+        if (condition(plan)) idsToUpdate.push(plan.id);
+      }
+      if (idsToUpdate.length > 0) {
+        const [count] = await db.ExpensePlan.update(
+          { status: newStatus as any },
+          { where: { id: { [Op.in]: idsToUpdate } } }
+        );
+        updatedCount += count;
+        idsToUpdate.forEach(id => this.invalidatePlanCache(id));
+      }
+      offset += batchSize;
+    }
+    this.invalidateListCache();
+    return updatedCount;
+  }
+
+  // ── On expense change ──
+  static async onExpenseChanged(planId: string | null) {
+    if (!planId) return;
+    await this.refreshAllocatedAmount(planId);
+  }
 
   private static validateStatusTransition(from: string, to: string): void {
     const allowedTransitions: Record<string, string[]> = {
