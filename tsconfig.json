@@ -8,9 +8,7 @@
     "forceConsistentCasingInFileNames": true,
     "outDir": "./dist",
     "rootDir": "./",
-    "typeRoots": ["./node_modules/@types"],
-    "types": ["node", "express", "cors"],
-    "noImplicitAny": false   // ← add this to fix the callback errors
+    "noImplicitAny": false
   },
   "include": ["**/*.ts"],
   "exclude": ["node_modules", "dist"]
