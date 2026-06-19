@@ -1,180 +1,252 @@
-import { Op, fn, col, QueryTypes } from "sequelize";
+import { QueryTypes } from "sequelize";
 import db from "../../../models";
 
-const { Sale, Expense, ExpenseCategory, ExpensePlan } = db;
-
 export class ExpenseAnalyticsService {
-  // ── 1. Overview ──
+  // ── Overview (no pending invoices) ──
   async getOverview() {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    const profitAll = (await Sale.sum("profit", { where: {} })) || 0;
-    const pendingInvoices = (await Sale.sum("totalAmount", {
-      where: { paymentStatus: "pending" },
-    })) || 0;
-    const activePlans = await ExpensePlan.count({
-      where: { status: "active" },
-    });
-    const expensesThisMonth = (await Expense.sum("amount", {
-      where: { expenseDate: { [Op.gte]: startOfMonth } },
-    })) || 0;
-    const revenueThisMonth = (await Sale.sum("totalAmount", {
-      where: { createdAt: { [Op.gte]: startOfMonth } },
-    })) || 0;
-    const profitThisMonth = revenueThisMonth - expensesThisMonth;
+    const totalSales = await db.sequelize.query(
+      `SELECT COALESCE(SUM(totalAmount), 0) as total FROM sales`,
+      { type: QueryTypes.SELECT }
+    ).then((r: any) => parseFloat(r[0]?.total || 0));
+
+    const totalExpenses = await db.sequelize.query(
+      `SELECT COALESCE(SUM(amount), 0) as total FROM expenses`,
+      { type: QueryTypes.SELECT }
+    ).then((r: any) => parseFloat(r[0]?.total || 0));
+
+    const businessExpenses = await db.sequelize.query(
+      `SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE referenceType != 'personal'`,
+      { type: QueryTypes.SELECT }
+    ).then((r: any) => parseFloat(r[0]?.total || 0));
+
+    const personalExpenses = await db.sequelize.query(
+      `SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE referenceType = 'personal'`,
+      { type: QueryTypes.SELECT }
+    ).then((r: any) => parseFloat(r[0]?.total || 0));
+
+    const netProfit = totalSales - businessExpenses;
+    const totalProfitAfterAll = totalSales - totalExpenses;
+
+    const activePlans = await db.sequelize.query(
+      `SELECT COUNT(*) as count FROM expense_plans WHERE status = 'active'`,
+      { type: QueryTypes.SELECT }
+    ).then((r: any) => parseInt(r[0]?.count || 0));
+
+    const expensesThisMonth = await db.sequelize.query(
+      `SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE expenseDate >= :startOfMonth`,
+      { replacements: { startOfMonth }, type: QueryTypes.SELECT }
+    ).then((r: any) => parseFloat(r[0]?.total || 0));
+
+    const revenueThisMonth = await db.sequelize.query(
+      `SELECT COALESCE(SUM(totalAmount), 0) as total FROM sales WHERE createdAt >= :startOfMonth`,
+      { replacements: { startOfMonth }, type: QueryTypes.SELECT }
+    ).then((r: any) => parseFloat(r[0]?.total || 0));
 
     return {
-      totalProfit: profitAll,
-      pendingInvoices,
+      totalSales,
+      totalExpenses,
+      businessExpenses,
+      personalExpenses,
+      netProfit,
+      totalProfitAfterAll,
       activePlans,
       expensesThisMonth,
       revenueThisMonth,
-      profitThisMonth,
+      profitThisMonth: revenueThisMonth - expensesThisMonth,
     };
   }
 
-  // ── 2. Monthly Trend ──
-  async getMonthlyTrend(startDate?: string, endDate?: string) {
-    const whereSale: any = {};
-    const whereExpense: any = {};
-    if (startDate) {
-      whereSale.createdAt = { [Op.gte]: new Date(startDate) };
-      whereExpense.expenseDate = { [Op.gte]: new Date(startDate) };
+  // ── Monthly Trend with Period Filter ──
+  async getMonthlyTrend(period: string = 'all') {
+    let dateCondition = '';
+    const now = new Date();
+    switch (period) {
+      case '7d':
+        const sevenDaysAgo = new Date(now);
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        dateCondition = `AND s.createdAt >= '${sevenDaysAgo.toISOString().slice(0, 10)}'`;
+        break;
+      case '30d':
+        const thirtyDaysAgo = new Date(now);
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        dateCondition = `AND s.createdAt >= '${thirtyDaysAgo.toISOString().slice(0, 10)}'`;
+        break;
+      case '3m':
+        const threeMonthsAgo = new Date(now);
+        threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+        dateCondition = `AND s.createdAt >= '${threeMonthsAgo.toISOString().slice(0, 10)}'`;
+        break;
+      case '6m':
+        const sixMonthsAgo = new Date(now);
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+        dateCondition = `AND s.createdAt >= '${sixMonthsAgo.toISOString().slice(0, 10)}'`;
+        break;
+      default:
+        // 'all' – no date filter
+        break;
     }
-    if (endDate) {
-      whereSale.createdAt = { [Op.lte]: new Date(endDate) };
-      whereExpense.expenseDate = { [Op.lte]: new Date(endDate) };
-    }
 
-    const revenue = await Sale.findAll({
-      attributes: [
-        [fn("DATE_FORMAT", col("createdAt"), "%Y-%m"), "month"],
-        [fn("SUM", col("totalAmount")), "revenue"],
-      ],
-      where: whereSale,
-      group: [fn("DATE_FORMAT", col("createdAt"), "%Y-%m")],
-      order: [[fn("DATE_FORMAT", col("createdAt"), "%Y-%m"), "ASC"]],
-      raw: true,
-    });
-
-    const expenses = await Expense.findAll({
-      attributes: [
-        [fn("DATE_FORMAT", col("expenseDate"), "%Y-%m"), "month"],
-        [fn("SUM", col("amount")), "expenses"],
-      ],
-      where: whereExpense,
-      group: [fn("DATE_FORMAT", col("expenseDate"), "%Y-%m")],
-      order: [[fn("DATE_FORMAT", col("expenseDate"), "%Y-%m"), "ASC"]],
-      raw: true,
-    });
-
-    const monthMap: Record<string, any> = {};
-    (revenue as any[]).forEach((r) => {
-      const m = r.month;
-      if (!monthMap[m]) monthMap[m] = { month: m, revenue: 0, expenses: 0 };
-      monthMap[m].revenue = parseFloat(r.revenue);
-    });
-    (expenses as any[]).forEach((e) => {
-      const m = e.month;
-      if (!monthMap[m]) monthMap[m] = { month: m, revenue: 0, expenses: 0 };
-      monthMap[m].expenses = parseFloat(e.expenses);
-    });
-
-    return Object.values(monthMap).map((item) => ({
-      month: item.month,
-      revenue: item.revenue,
-      totalCost: item.expenses,
-      netProfit: item.revenue - item.expenses,
+    const query = `
+      SELECT
+        DATE_FORMAT(s.createdAt, '%Y-%m') as month,
+        COALESCE(SUM(s.totalAmount), 0) as revenue,
+        COALESCE((
+          SELECT SUM(e.amount)
+          FROM expenses e
+          WHERE DATE_FORMAT(e.expenseDate, '%Y-%m') = DATE_FORMAT(s.createdAt, '%Y-%m')
+          ${dateCondition.replace('s.createdAt', 'e.expenseDate')}
+        ), 0) as expenses
+      FROM sales s
+      WHERE 1=1 ${dateCondition}
+      GROUP BY month
+      ORDER BY month ASC
+    `;
+    const results = await db.sequelize.query(query, { type: QueryTypes.SELECT });
+    return (results as any[]).map(row => ({
+      month: row.month,
+      revenue: parseFloat(row.revenue),
+      expenses: parseFloat(row.expenses),
+      netProfit: parseFloat(row.revenue) - parseFloat(row.expenses),
     }));
   }
 
-  // ── 3. Expense Breakdown by Reference Type ──
-  async getExpenseBreakdown(startDate?: string, endDate?: string) {
-    const where: any = {};
-    if (startDate) where.expenseDate = { [Op.gte]: new Date(startDate) };
-    if (endDate) where.expenseDate = { [Op.lte]: new Date(endDate) };
-
-    const breakdown = await Expense.findAll({
-      attributes: [
-        [fn("DATE_FORMAT", col("expenseDate"), "%Y-%m"), "month"],
-        "referenceType",
-        [fn("SUM", col("amount")), "total"],
-      ],
-      where,
-      group: [fn("DATE_FORMAT", col("expenseDate"), "%Y-%m"), "referenceType"],
-      order: [[fn("DATE_FORMAT", col("expenseDate"), "%Y-%m"), "ASC"]],
-      raw: true,
-    });
-
-    const months = [...new Set((breakdown as any[]).map((b) => b.month))].sort();
-    const types = ["stock", "personal", "recurring", "general", "plan"];
-
-    return months.map((month) => {
-      const row: any = { month };
-      types.forEach((t) => (row[t] = 0));
-      (breakdown as any[]).forEach((b) => {
-        if (b.month === month) {
-          row[b.referenceType] = parseFloat(b.total);
-        }
-      });
-      return row;
-    });
+  // ── Reference Breakdown ──
+  async getReferenceBreakdown() {
+    const query = `
+      SELECT referenceType as name, SUM(amount) as value
+      FROM expenses
+      GROUP BY referenceType
+    `;
+    const results = await db.sequelize.query(query, { type: QueryTypes.SELECT });
+    const total = (results as any[]).reduce((acc, cur) => acc + parseFloat(cur.value), 0);
+    return (results as any[]).map(row => ({
+      name: row.name,
+      value: parseFloat(row.value),
+      percentage: total > 0 ? (parseFloat(row.value) / total) * 100 : 0,
+    }));
   }
 
-  // ── 4. Category Treemap ──
-  async getCategoryTreemap(startDate?: string, endDate?: string) {
-    const where: any = {};
-    if (startDate) where.expenseDate = { [Op.gte]: new Date(startDate) };
-    if (endDate) where.expenseDate = { [Op.lte]: new Date(endDate) };
-
+  // ── Daily Trend ──
+  async getDailyTrend() {
     const query = `
-      SELECT 
-        e.categoryId,
+      SELECT DATE(expenseDate) as name, SUM(amount) as value
+      FROM expenses
+      GROUP BY name
+      ORDER BY name ASC
+    `;
+    const results = await db.sequelize.query(query, { type: QueryTypes.SELECT });
+    return (results as any[]).map(row => ({
+      name: row.name,
+      value: parseFloat(row.value),
+    }));
+  }
+
+  // ── Personal Usage (all‑time) ──
+  async getPersonalUsage() {
+    const totalSales = await db.sequelize.query(
+      `SELECT COALESCE(SUM(totalAmount), 0) as total FROM sales`,
+      { type: QueryTypes.SELECT }
+    ).then((r: any) => parseFloat(r[0]?.total || 0));
+
+    const businessExpenses = await db.sequelize.query(
+      `SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE referenceType != 'personal'`,
+      { type: QueryTypes.SELECT }
+    ).then((r: any) => parseFloat(r[0]?.total || 0));
+
+    const personalExpenses = await db.sequelize.query(
+      `SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE referenceType = 'personal'`,
+      { type: QueryTypes.SELECT }
+    ).then((r: any) => parseFloat(r[0]?.total || 0));
+
+    const profit = totalSales - businessExpenses;
+    const personalUsagePercent = profit > 0 ? (personalExpenses / profit) * 100 : 0;
+    const status = personalUsagePercent <= 30 ? 'green' : personalUsagePercent <= 50 ? 'yellow' : 'red';
+
+    return {
+      totalSales,
+      businessExpenses,
+      personalExpenses,
+      profit,
+      personalUsagePercent: parseFloat(personalUsagePercent.toFixed(2)),
+      status,
+    };
+  }
+
+  // ── Profit Margin ──
+  async getProfitMargin() {
+    const totalSales = await db.sequelize.query(
+      `SELECT COALESCE(SUM(totalAmount), 0) as total FROM sales`,
+      { type: QueryTypes.SELECT }
+    ).then((r: any) => parseFloat(r[0]?.total || 0));
+
+    const totalExpenses = await db.sequelize.query(
+      `SELECT COALESCE(SUM(amount), 0) as total FROM expenses`,
+      { type: QueryTypes.SELECT }
+    ).then((r: any) => parseFloat(r[0]?.total || 0));
+
+    const netProfit = totalSales - totalExpenses;
+    const expenseRatio = totalSales > 0 ? (totalExpenses / totalSales) * 100 : 0;
+    const profitMargin = totalSales > 0 ? (netProfit / totalSales) * 100 : 0;
+    const markup = totalExpenses > 0 ? ((totalSales - totalExpenses) / totalExpenses) * 100 : 0;
+
+    return {
+      totalSales,
+      totalExpenses,
+      netProfit,
+      expenseRatio: parseFloat(expenseRatio.toFixed(2)),
+      profitMargin: parseFloat(profitMargin.toFixed(2)),
+      markup: parseFloat(markup.toFixed(2)),
+    };
+  }
+
+  // ── Category Spending (Flat) ──
+  async getCategorySpending() {
+    const query = `
+      SELECT
         ec.name as categoryName,
-        ec.parentId,
         SUM(e.amount) as total
       FROM expenses e
       LEFT JOIN expense_categories ec ON e.categoryId = ec.id
-      WHERE e.expenseDate BETWEEN :start AND :end
-      GROUP BY e.categoryId, ec.name, ec.parentId
+      GROUP BY e.categoryId, ec.name
+      ORDER BY total DESC
     `;
+    const results = await db.sequelize.query(query, { type: QueryTypes.SELECT });
+    return (results as any[]).map(row => ({
+      categoryName: row.categoryName || 'Uncategorized',
+      total: parseFloat(row.total),
+    }));
+  }
 
-    const start = startDate ? new Date(startDate) : new Date(0);
-    const end = endDate ? new Date(endDate) : new Date(9999, 11, 31);
+  // ── Category Treemap ──
+  async getCategoryTreemap() {
+    const categories = await db.sequelize.query(
+      `SELECT id, name, parentId FROM expense_categories`,
+      { type: QueryTypes.SELECT }
+    ) as any[];
 
-    let results = await db.sequelize.query(query, {
-      replacements: { start, end },
-      type: QueryTypes.SELECT,
+    const spending = await db.sequelize.query(
+      `SELECT categoryId, SUM(amount) as total FROM expenses GROUP BY categoryId`,
+      { type: QueryTypes.SELECT }
+    ) as any[];
+
+    const catMap: Record<string, any> = {};
+    categories.forEach(cat => {
+      catMap[cat.id] = { ...cat, children: [], value: 0 };
     });
 
-    if (!Array.isArray(results)) {
-      results = results[0] || [];
-    }
-
-    const categoryMap: Record<string, any> = {};
-    const allCategories = await ExpenseCategory.findAll({ raw: true });
-    allCategories.forEach((cat: any) => {
-      categoryMap[cat.id] = {
-        id: cat.id,
-        name: cat.name,
-        parentId: cat.parentId,
-        value: 0,
-        children: [],
-      };
-    });
-
-    (results as any[]).forEach((row) => {
-      const catId = row.categoryId;
-      if (categoryMap[catId]) {
-        categoryMap[catId].value += parseFloat(row.total);
+    spending.forEach(s => {
+      if (catMap[s.categoryId]) {
+        catMap[s.categoryId].value = parseFloat(s.total);
       }
     });
 
     const roots: any[] = [];
-    Object.values(categoryMap).forEach((cat) => {
-      if (cat.parentId && categoryMap[cat.parentId]) {
-        categoryMap[cat.parentId].children.push(cat);
+    Object.values(catMap).forEach(cat => {
+      if (cat.parentId && catMap[cat.parentId]) {
+        catMap[cat.parentId].children.push(cat);
       } else {
         roots.push(cat);
       }
@@ -188,7 +260,7 @@ export class ExpenseAnalyticsService {
 
     const flatten = (nodes: any[], parentName?: string): any[] => {
       let result: any[] = [];
-      nodes.forEach((node) => {
+      nodes.forEach(node => {
         if (node.value > 0) {
           result.push({
             name: node.name,
@@ -204,619 +276,104 @@ export class ExpenseAnalyticsService {
     return flatten(roots);
   }
 
-  // ── 5. Budget Progress ──
-  async getBudgetProgress() {
-    const plans = await ExpensePlan.findAll({
-      where: { status: "active" },
-      attributes: ["id", "title", "targetAmount", "currentAllocatedAmount"],
-      raw: true,
-    });
-
-    return plans.map((plan: any) => ({
-      id: plan.id,
-      title: plan.title,
-      targetAmount: parseFloat(plan.targetAmount),
-      currentAllocatedAmount: parseFloat(plan.currentAllocatedAmount),
-      progress: (parseFloat(plan.currentAllocatedAmount) / parseFloat(plan.targetAmount)) * 100,
-      status:
-        parseFloat(plan.currentAllocatedAmount) >= parseFloat(plan.targetAmount)
-          ? "completed"
-          : "active",
+  // ── Plan Expenses ──
+  async getPlanExpenses() {
+    const query = `
+      SELECT
+        ep.title as planName,
+        SUM(e.amount) as total
+      FROM expenses e
+      LEFT JOIN expense_plans ep ON e.expensePlanId = ep.id
+      WHERE e.referenceType = 'plan' OR e.expensePlanId IS NOT NULL
+      GROUP BY e.expensePlanId, ep.title
+      ORDER BY total DESC
+    `;
+    const results = await db.sequelize.query(query, { type: QueryTypes.SELECT });
+    return (results as any[]).map(row => ({
+      planName: row.planName || 'Unnamed Plan',
+      total: parseFloat(row.total),
     }));
   }
 
-  // ── 6. Cash Flow ──
-  async getCashFlow(startDate?: string, endDate?: string) {
-    const where: any = {};
-    if (startDate) where.createdAt = { [Op.gte]: new Date(startDate) };
-    if (endDate) where.createdAt = { [Op.lte]: new Date(endDate) };
-
-    const cashFlow = await Sale.findAll({
-      attributes: [
-        [fn("DATE_FORMAT", col("createdAt"), "%Y-%m"), "month"],
-        "paymentStatus",
-        [fn("SUM", col("totalAmount")), "total"],
-      ],
-      where,
-      group: [fn("DATE_FORMAT", col("createdAt"), "%Y-%m"), "paymentStatus"],
-      order: [[fn("DATE_FORMAT", col("createdAt"), "%Y-%m"), "ASC"]],
-      raw: true,
-    });
-
-    const months = [...new Set((cashFlow as any[]).map((c) => c.month))].sort();
-    return months.map((month) => {
-      const row: any = { month };
-      const paid = (cashFlow as any[]).find(
-        (c) => c.month === month && c.paymentStatus === "paid"
-      );
-      const pending = (cashFlow as any[]).find(
-        (c) => c.month === month && c.paymentStatus === "pending"
-      );
-      row.paid = paid ? parseFloat(paid.total) : 0;
-      row.pending = pending ? parseFloat(pending.total) : 0;
-      return row;
-    });
-  }
-
-  // ── 7. Payment Type Distribution ──
-  async getPaymentTypeDistribution(startDate?: string, endDate?: string) {
-    const where: any = {};
-    if (startDate) where.createdAt = { [Op.gte]: new Date(startDate) };
-    if (endDate) where.createdAt = { [Op.lte]: new Date(endDate) };
-
-    const distribution = await Sale.findAll({
-      attributes: [
-        "paymentType",
-        [fn("SUM", col("totalAmount")), "total"],
-      ],
-      where,
-      group: ["paymentType"],
-      raw: true,
-    });
-
-    return (distribution as any[]).map((d) => ({
-      name: d.paymentType === "cash" ? "Cash" : "Credit",
-      value: parseFloat(d.total),
-    }));
-  }
-
-  // ── 8. Personal vs Business ──
-  async getPersonalVsBusiness(startDate?: string, endDate?: string) {
-    const where: any = {};
-    if (startDate) where.expenseDate = { [Op.gte]: new Date(startDate) };
-    if (endDate) where.expenseDate = { [Op.lte]: new Date(endDate) };
-
-    const personal = await Expense.findAll({
-      attributes: [
-        [fn("DATE_FORMAT", col("expenseDate"), "%Y-%m"), "month"],
-        [fn("SUM", col("amount")), "total"],
-      ],
-      where: { ...where, referenceType: "personal" },
-      group: [fn("DATE_FORMAT", col("expenseDate"), "%Y-%m")],
-      order: [[fn("DATE_FORMAT", col("expenseDate"), "%Y-%m"), "ASC"]],
-      raw: true,
-    });
-
-    const business = await Expense.findAll({
-      attributes: [
-        [fn("DATE_FORMAT", col("expenseDate"), "%Y-%m"), "month"],
-        [fn("SUM", col("amount")), "total"],
-      ],
-      where: { ...where, referenceType: { [Op.ne]: "personal" } },
-      group: [fn("DATE_FORMAT", col("expenseDate"), "%Y-%m")],
-      order: [[fn("DATE_FORMAT", col("expenseDate"), "%Y-%m"), "ASC"]],
-      raw: true,
-    });
-
-    const monthMap: Record<string, any> = {};
-    (personal as any[]).forEach((p) => {
-      const m = p.month;
-      if (!monthMap[m]) monthMap[m] = { month: m, personal: 0, business: 0 };
-      monthMap[m].personal = parseFloat(p.total);
-    });
-    (business as any[]).forEach((b) => {
-      const m = b.month;
-      if (!monthMap[m]) monthMap[m] = { month: m, personal: 0, business: 0 };
-      monthMap[m].business = parseFloat(b.total);
-    });
-
-    return Object.values(monthMap).sort((a, b) => a.month.localeCompare(b.month));
-  }
-
-  // ── 9. Burn Rate ──
-  async getBurnRate(startDate?: string, endDate?: string) {
-    const where: any = {};
-    if (startDate) where.expenseDate = { [Op.gte]: new Date(startDate) };
-    if (endDate) where.expenseDate = { [Op.lte]: new Date(endDate) };
-
-    const fixed = await Expense.findAll({
-      attributes: [
-        [fn("DATE_FORMAT", col("expenseDate"), "%Y-%m"), "month"],
-        [fn("SUM", col("amount")), "total"],
-      ],
-      where: { ...where, referenceType: "recurring" },
-      group: [fn("DATE_FORMAT", col("expenseDate"), "%Y-%m")],
-      order: [[fn("DATE_FORMAT", col("expenseDate"), "%Y-%m"), "ASC"]],
-      raw: true,
-    });
-
-    const variable = await Expense.findAll({
-      attributes: [
-        [fn("DATE_FORMAT", col("expenseDate"), "%Y-%m"), "month"],
-        [fn("SUM", col("amount")), "total"],
-      ],
-      where: { ...where, referenceType: { [Op.in]: ["general", "stock"] } },
-      group: [fn("DATE_FORMAT", col("expenseDate"), "%Y-%m")],
-      order: [[fn("DATE_FORMAT", col("expenseDate"), "%Y-%m"), "ASC"]],
-      raw: true,
-    });
-
-    const monthMap: Record<string, any> = {};
-    (fixed as any[]).forEach((f) => {
-      const m = f.month;
-      if (!monthMap[m]) monthMap[m] = { month: m, fixed: 0, variable: 0 };
-      monthMap[m].fixed = parseFloat(f.total);
-    });
-    (variable as any[]).forEach((v) => {
-      const m = v.month;
-      if (!monthMap[m]) monthMap[m] = { month: m, fixed: 0, variable: 0 };
-      monthMap[m].variable = parseFloat(v.total);
-    });
-
-    return Object.values(monthMap).sort((a, b) => a.month.localeCompare(b.month));
-  }
-
-  // ── 10. Runway ──
-  async getRunway() {
-    const totalRevenue = (await Sale.sum("totalAmount", {
-      where: { paymentStatus: "paid" },
-    })) || 0;
-    const totalExpenses = (await Expense.sum("amount", {})) || 0;
-    const currentBalance = totalRevenue - totalExpenses;
-
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-
-    const recurringExpenses = await Expense.findAll({
-      attributes: [
-        [fn("DATE_FORMAT", col("expenseDate"), "%Y-%m"), "month"],
-        [fn("SUM", col("amount")), "total"],
-      ],
-      where: {
-        referenceType: "recurring",
-        expenseDate: { [Op.gte]: sixMonthsAgo },
-      },
-      group: [fn("DATE_FORMAT", col("expenseDate"), "%Y-%m")],
-      raw: true,
-    });
-
-    const avgMonthlyRecurring =
-      (recurringExpenses as any[]).reduce(
-        (acc, cur) => acc + parseFloat(cur.total),
-        0
-      ) / (recurringExpenses.length || 1);
-
-    const projection = [];
-    let balance = currentBalance;
-    for (let i = 0; i < 3; i++) {
-      balance -= avgMonthlyRecurring;
-      projection.push({
-        month: new Date(
-          new Date().setMonth(new Date().getMonth() + i + 1)
-        ).toISOString().slice(0, 7),
-        projectedBalance: Math.max(balance, 0),
-      });
-    }
-
-    return {
-      currentBalance,
-      avgMonthlyRecurring,
-      projection,
-      monthsOfRunway: Math.floor(currentBalance / (avgMonthlyRecurring || 1)),
-    };
-  }
-
-  // ── 11. Monthly Heatmap ──
-  async getHeatmap(year?: number, month?: number) {
-    const targetYear = year || new Date().getFullYear();
-    const targetMonth = month !== undefined ? month : new Date().getMonth() + 1;
-
-    const startDate = new Date(targetYear, targetMonth - 1, 1);
-    const endDate = new Date(targetYear, targetMonth, 0);
-
-    const expenses = await Expense.findAll({
-      attributes: [
-        [fn("DATE", col("expenseDate")), "day"],
-        [fn("SUM", col("amount")), "total"],
-      ],
-      where: {
-        expenseDate: { [Op.between]: [startDate, endDate] },
-      },
-      group: [fn("DATE", col("expenseDate"))],
-      raw: true,
-    });
-
-    const dayMap: Record<string, number> = {};
-    (expenses as any[]).forEach((exp) => {
-      const dayStr = exp.day;
-      dayMap[dayStr] = parseFloat(exp.total);
-    });
-
-    const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
-    const result = [];
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dateObj = new Date(targetYear, targetMonth - 1, d);
-      const dayStr = dateObj.toISOString().slice(0, 10);
-      result.push({
-        date: dayStr,
-        total: dayMap[dayStr] || 0,
-        notes: [],
-      });
-    }
-
-    return result;
-  }
-
-  // ── 12. Daily Net Profit ──
-  async getDailyNetProfit(startDate?: string, endDate?: string) {
-    const whereSale: any = {};
-    const whereExpense: any = {};
-    if (startDate) {
-      whereSale.createdAt = { [Op.gte]: new Date(startDate) };
-      whereExpense.expenseDate = { [Op.gte]: new Date(startDate) };
-    }
-    if (endDate) {
-      whereSale.createdAt = { [Op.lte]: new Date(endDate) };
-      whereExpense.expenseDate = { [Op.lte]: new Date(endDate) };
-    }
-
-    const revenue = await Sale.findAll({
-      attributes: [
-        [fn("DATE", col("createdAt")), "day"],
-        [fn("SUM", col("totalAmount")), "revenue"],
-      ],
-      where: whereSale,
-      group: [fn("DATE", col("createdAt"))],
-      raw: true,
-    });
-
-    const expenses = await Expense.findAll({
-      attributes: [
-        [fn("DATE", col("expenseDate")), "day"],
-        [fn("SUM", col("amount")), "expenses"],
-      ],
-      where: whereExpense,
-      group: [fn("DATE", col("expenseDate"))],
-      raw: true,
-    });
-
-    const dayMap: Record<string, any> = {};
-    (revenue as any[]).forEach((r) => {
-      const d = r.day;
-      if (!dayMap[d]) dayMap[d] = { day: d, revenue: 0, expenses: 0 };
-      dayMap[d].revenue = parseFloat(r.revenue);
-    });
-    (expenses as any[]).forEach((e) => {
-      const d = e.day;
-      if (!dayMap[d]) dayMap[d] = { day: d, revenue: 0, expenses: 0 };
-      dayMap[d].expenses = parseFloat(e.expenses);
-    });
-
-    return Object.values(dayMap)
-      .map((item) => ({
-        day: item.day,
-        revenue: item.revenue,
-        expenses: item.expenses,
-        netProfit: item.revenue - item.expenses,
-      }))
-      .sort((a, b) => a.day.localeCompare(b.day));
-  }
-
-  // ── 13. Cumulative Profit ──
-  async getCumulativeProfit(startDate?: string, endDate?: string) {
-    const daily = await this.getDailyNetProfit(startDate, endDate);
-    let running = 0;
-    return daily.map((d) => {
-      running += d.netProfit;
-      return { day: d.day, cumulativeProfit: running };
-    });
-  }
-
-  // ── 14. Weekly Aggregates ──
-  async getWeeklyAggregates(startDate?: string, endDate?: string) {
-    const whereSale: any = {};
-    const whereExpense: any = {};
-    if (startDate) {
-      whereSale.createdAt = { [Op.gte]: new Date(startDate) };
-      whereExpense.expenseDate = { [Op.gte]: new Date(startDate) };
-    }
-    if (endDate) {
-      whereSale.createdAt = { [Op.lte]: new Date(endDate) };
-      whereExpense.expenseDate = { [Op.lte]: new Date(endDate) };
-    }
-
-    const revenue = await Sale.findAll({
-      attributes: [
-        [fn("YEARWEEK", col("createdAt"), 1), "week"],
-        [fn("SUM", col("totalAmount")), "revenue"],
-      ],
-      where: whereSale,
-      group: [fn("YEARWEEK", col("createdAt"), 1)],
-      raw: true,
-    });
-
-    const expenses = await Expense.findAll({
-      attributes: [
-        [fn("YEARWEEK", col("expenseDate"), 1), "week"],
-        [fn("SUM", col("amount")), "expenses"],
-      ],
-      where: whereExpense,
-      group: [fn("YEARWEEK", col("expenseDate"), 1)],
-      raw: true,
-    });
-
-    const weekMap: Record<string, any> = {};
-    (revenue as any[]).forEach((r) => {
-      const w = r.week;
-      if (!weekMap[w]) weekMap[w] = { week: w, revenue: 0, expenses: 0 };
-      weekMap[w].revenue = parseFloat(r.revenue);
-    });
-    (expenses as any[]).forEach((e) => {
-      const w = e.week;
-      if (!weekMap[w]) weekMap[w] = { week: w, revenue: 0, expenses: 0 };
-      weekMap[w].expenses = parseFloat(e.expenses);
-    });
-
-    return Object.values(weekMap)
-      .map((item) => {
-        const netProfit = item.revenue - item.expenses;
-        const expenseRatio = item.revenue > 0 ? (item.expenses / item.revenue) * 100 : 0;
-        return {
-          week: String(item.week),
-          revenue: item.revenue,
-          expenses: item.expenses,
-          netProfit,
-          expenseRatio: parseFloat(expenseRatio.toFixed(2)),
-        };
-      })
-      .sort((a, b) => a.week.localeCompare(b.week));
-  }
-
-  // ── 15. Category Spending ──
-  async getCategorySpending(startDate?: string, endDate?: string) {
-    const where: any = {};
-    if (startDate) where.expenseDate = { [Op.gte]: new Date(startDate) };
-    if (endDate) where.expenseDate = { [Op.lte]: new Date(endDate) };
-
-    const spending = await Expense.findAll({
-      attributes: [
-        "categoryId",
-        [fn("SUM", col("amount")), "total"],
-      ],
-      where,
-      group: ["categoryId"],
-      raw: true,
-    });
-
-    const categoryIds = (spending as any[]).map((s) => s.categoryId).filter(Boolean);
-    const categories = await ExpenseCategory.findAll({
-      where: { id: { [Op.in]: categoryIds } },
-      attributes: ["id", "name", "parentId"],
-      raw: true,
-    });
-    const catMap: Record<string, any> = {};
-    categories.forEach((cat: any) => {
-      catMap[cat.id] = cat;
-    });
-
-    return (spending as any[]).map((s) => ({
-      categoryId: s.categoryId,
-      categoryName: catMap[s.categoryId]?.name || "Uncategorized",
-      parentId: catMap[s.categoryId]?.parentId || null,
-      total: parseFloat(s.total),
-    }));
-  }
-
-  // ── 16. Reference Type Summary ──
-  async getReferenceTypeSummary(startDate?: string, endDate?: string) {
-    const where: any = {};
-    if (startDate) where.expenseDate = { [Op.gte]: new Date(startDate) };
-    if (endDate) where.expenseDate = { [Op.lte]: new Date(endDate) };
-
-    const summary = await Expense.findAll({
-      attributes: [
-        "referenceType",
-        [fn("SUM", col("amount")), "total"],
-      ],
-      where,
-      group: ["referenceType"],
-      raw: true,
-    });
-
-    return (summary as any[]).map((s) => ({
-      referenceType: s.referenceType,
-      total: parseFloat(s.total),
-    }));
-  }
-
-  // ── 17. Yearly Heatmap ──
+  // ── Yearly Heatmap ──
   async getYearlyHeatmap(year: number) {
     const startDate = new Date(year, 0, 1);
     const endDate = new Date(year, 11, 31);
 
-    const expenses = await Expense.findAll({
-      attributes: [
-        [fn("DATE", col("expenseDate")), "day"],
-        [fn("SUM", col("amount")), "total"],
-      ],
-      where: {
-        expenseDate: { [Op.between]: [startDate, endDate] },
-      },
-      group: [fn("DATE", col("expenseDate"))],
-      raw: true,
+    const query = `
+      SELECT DATE(expenseDate) as day, SUM(amount) as total
+      FROM expenses
+      WHERE expenseDate BETWEEN :start AND :end
+      GROUP BY day
+    `;
+    const results = await db.sequelize.query(query, {
+      replacements: { start: startDate, end: endDate },
+      type: QueryTypes.SELECT,
     });
 
     const dayMap: Record<string, number> = {};
-    (expenses as any[]).forEach((exp) => {
-      const dayStr = exp.day;
-      dayMap[dayStr] = parseFloat(exp.total);
+    (results as any[]).forEach(row => {
+      dayMap[row.day] = parseFloat(row.total);
     });
 
-    const result = [];
-    const currentDate = new Date(startDate);
-    while (currentDate <= endDate) {
-      const dayStr = currentDate.toISOString().slice(0, 10);
-      result.push({
+    const days = [];
+    const current = new Date(startDate);
+    while (current <= endDate) {
+      const dayStr = current.toISOString().slice(0, 10);
+      days.push({
         date: dayStr,
         total: dayMap[dayStr] || 0,
         notes: [],
       });
-      currentDate.setDate(currentDate.getDate() + 1);
+      current.setDate(current.getDate() + 1);
     }
-
-    return result;
+    return days;
   }
 
-  // ── 18. Profit Margin ──
-  async getProfitMargin() {
-    const totalRevenue = (await Sale.sum("totalAmount")) || 0;
-    const totalExpenses = (await Expense.sum("amount")) || 0;
-    const netProfit = totalRevenue - totalExpenses;
-    const expenseRatio = totalRevenue > 0 ? (totalExpenses / totalRevenue) * 100 : 0;
-    const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
-
-    return {
-      totalRevenue,
-      totalExpenses,
-      netProfit,
-      expenseRatio: parseFloat(expenseRatio.toFixed(2)),
-      profitMargin: parseFloat(profitMargin.toFixed(2)),
-    };
+  // ── Daily Profit & Margin (FIXED) ──
+  async getDailyProfitMargin() {
+    const query = `
+      SELECT
+        COALESCE(s.day, e.day) as day,
+        COALESCE(s.revenue, 0) as revenue,
+        COALESCE(e.expenses, 0) as expenses,
+        COALESCE(s.revenue, 0) - COALESCE(e.expenses, 0) as netProfit,
+        CASE
+          WHEN COALESCE(s.revenue, 0) > 0
+          THEN ((COALESCE(s.revenue, 0) - COALESCE(e.expenses, 0)) / COALESCE(s.revenue, 0)) * 100
+          ELSE 0
+        END as marginPercent
+      FROM (
+        SELECT DATE(createdAt) as day, SUM(totalAmount) as revenue
+        FROM sales
+        GROUP BY day
+      ) s
+      RIGHT JOIN (
+        SELECT DATE(expenseDate) as day, SUM(amount) as expenses
+        FROM expenses
+        GROUP BY day
+      ) e ON s.day = e.day
+      ORDER BY day ASC
+    `;
+    const results = await db.sequelize.query(query, { type: QueryTypes.SELECT });
+    return (results as any[]).map(row => ({
+      name: row.day,
+      revenue: parseFloat(row.revenue),
+      expenses: parseFloat(row.expenses),
+      netProfit: parseFloat(row.netProfit),
+      marginPercent: parseFloat(row.marginPercent || 0), // ← FIX: parse to float
+    }));
   }
 
-  // ── 19. Personal Usage Summary (monthly) ──
-  async getPersonalUsageSummary(startDate?: string, endDate?: string) {
-    // Revenue per month
-    const revenueWhere: any = {};
-    if (startDate) revenueWhere.createdAt = { [Op.gte]: new Date(startDate) };
-    if (endDate) revenueWhere.createdAt = { [Op.lte]: new Date(endDate) };
-
-    const revenue = await Sale.findAll({
-      attributes: [
-        [fn("DATE_FORMAT", col("createdAt"), "%Y-%m"), "month"],
-        [fn("SUM", col("totalAmount")), "revenue"],
-      ],
-      where: revenueWhere,
-      group: [fn("DATE_FORMAT", col("createdAt"), "%Y-%m")],
-      order: [[fn("DATE_FORMAT", col("createdAt"), "%Y-%m"), "ASC"]],
-      raw: true,
-    });
-
-    // Expenses: business (all except personal) and personal separately
-    const expenseWhere: any = {};
-    if (startDate) expenseWhere.expenseDate = { [Op.gte]: new Date(startDate) };
-    if (endDate) expenseWhere.expenseDate = { [Op.lte]: new Date(endDate) };
-
-    // Business expenses (referenceType != 'personal')
-    const businessExpenses = await Expense.findAll({
-      attributes: [
-        [fn("DATE_FORMAT", col("expenseDate"), "%Y-%m"), "month"],
-        [fn("SUM", col("amount")), "businessExpenses"],
-      ],
-      where: { ...expenseWhere, referenceType: { [Op.ne]: "personal" } },
-      group: [fn("DATE_FORMAT", col("expenseDate"), "%Y-%m")],
-      order: [[fn("DATE_FORMAT", col("expenseDate"), "%Y-%m"), "ASC"]],
-      raw: true,
-    });
-
-    // Personal expenses (referenceType = 'personal')
-    const personalExpenses = await Expense.findAll({
-      attributes: [
-        [fn("DATE_FORMAT", col("expenseDate"), "%Y-%m"), "month"],
-        [fn("SUM", col("amount")), "personalExpenses"],
-      ],
-      where: { ...expenseWhere, referenceType: "personal" },
-      group: [fn("DATE_FORMAT", col("expenseDate"), "%Y-%m")],
-      order: [[fn("DATE_FORMAT", col("expenseDate"), "%Y-%m"), "ASC"]],
-      raw: true,
-    });
-
-    // Merge by month
-    const monthMap: Record<string, any> = {};
-    (revenue as any[]).forEach((r) => {
-      const m = r.month;
-      if (!monthMap[m]) monthMap[m] = { month: m, revenue: 0, businessExpenses: 0, personalExpenses: 0 };
-      monthMap[m].revenue = parseFloat(r.revenue);
-    });
-    (businessExpenses as any[]).forEach((b) => {
-      const m = b.month;
-      if (!monthMap[m]) monthMap[m] = { month: m, revenue: 0, businessExpenses: 0, personalExpenses: 0 };
-      monthMap[m].businessExpenses = parseFloat(b.businessExpenses);
-    });
-    (personalExpenses as any[]).forEach((p) => {
-      const m = p.month;
-      if (!monthMap[m]) monthMap[m] = { month: m, revenue: 0, businessExpenses: 0, personalExpenses: 0 };
-      monthMap[m].personalExpenses = parseFloat(p.personalExpenses);
-    });
-
-    // Compute profit and percentage
-    const result = Object.values(monthMap).map((item) => {
-      const profit = item.revenue - item.businessExpenses;
-      const personalUsagePercent = profit > 0 ? (item.personalExpenses / profit) * 100 : 0;
-      let status: 'green' | 'yellow' | 'red';
-      if (personalUsagePercent <= 30) status = 'green';
-      else if (personalUsagePercent <= 50) status = 'yellow';
-      else status = 'red';
-
-      return {
-        month: item.month,
-        revenue: item.revenue,
-        businessExpenses: item.businessExpenses,
-        personalExpenses: item.personalExpenses,
-        profit,
-        personalUsagePercent: parseFloat(personalUsagePercent.toFixed(2)),
-        status,
-      };
-    });
-
-    return result;
-  }
-
-  // ── 20. Personal Usage Total (all-time) ──
-  async getPersonalUsageTotal(startDate?: string, endDate?: string) {
-    const revenueWhere: any = {};
-    const expenseWhere: any = {};
-    if (startDate) {
-      revenueWhere.createdAt = { [Op.gte]: new Date(startDate) };
-      expenseWhere.expenseDate = { [Op.gte]: new Date(startDate) };
-    }
-    if (endDate) {
-      revenueWhere.createdAt = { [Op.lte]: new Date(endDate) };
-      expenseWhere.expenseDate = { [Op.lte]: new Date(endDate) };
-    }
-
-    const totalRevenue = (await Sale.sum("totalAmount", { where: revenueWhere })) || 0;
-    const businessExpenses = (await Expense.sum("amount", {
-      where: { ...expenseWhere, referenceType: { [Op.ne]: "personal" } },
-    })) || 0;
-    const personalExpenses = (await Expense.sum("amount", {
-      where: { ...expenseWhere, referenceType: "personal" },
-    })) || 0;
-
-    const profit = totalRevenue - businessExpenses;
-    const personalUsagePercent = profit > 0 ? (personalExpenses / profit) * 100 : 0;
-    let status: 'green' | 'yellow' | 'red';
-    if (personalUsagePercent <= 30) status = 'green';
-    else if (personalUsagePercent <= 50) status = 'yellow';
-    else status = 'red';
-
-    return {
-      totalRevenue,
-      businessExpenses,
-      personalExpenses,
-      profit,
-      personalUsagePercent: parseFloat(personalUsagePercent.toFixed(2)),
-      status,
-    };
+  // ── Available Years ──
+  async getAvailableYears() {
+    const query = `
+      SELECT DISTINCT YEAR(expenseDate) as year FROM expenses
+      UNION
+      SELECT DISTINCT YEAR(createdAt) as year FROM sales
+      ORDER BY year DESC
+    `;
+    const results = await db.sequelize.query(query, { type: QueryTypes.SELECT });
+    return (results as any[]).map(row => parseInt(row.year));
   }
 }

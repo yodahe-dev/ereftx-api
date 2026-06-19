@@ -16,8 +16,8 @@ export class ExpenseAnalyticsController {
 
   async getMonthlyTrend(req: Request, res: Response) {
     try {
-      const { startDate, endDate } = req.query;
-      const data = await service.getMonthlyTrend(startDate as string, endDate as string);
+      const { period } = req.query;
+      const data = await service.getMonthlyTrend(period as string);
       res.json({ success: true, data });
     } catch (error: any) {
       console.error("getMonthlyTrend error:", error);
@@ -25,143 +25,49 @@ export class ExpenseAnalyticsController {
     }
   }
 
-  async getExpenseBreakdown(req: Request, res: Response) {
+  async getReferenceBreakdown(req: Request, res: Response) {
     try {
-      const { startDate, endDate } = req.query;
-      const data = await service.getExpenseBreakdown(startDate as string, endDate as string);
+      const data = await service.getReferenceBreakdown();
       res.json({ success: true, data });
     } catch (error: any) {
-      console.error("getExpenseBreakdown error:", error);
+      console.error("getReferenceBreakdown error:", error);
       res.status(500).json({ success: false, message: error.message });
     }
   }
 
-  async getCategoryTreemap(req: Request, res: Response) {
+  async getDailyTrend(req: Request, res: Response) {
     try {
-      const { startDate, endDate } = req.query;
-      const data = await service.getCategoryTreemap(startDate as string, endDate as string);
+      const data = await service.getDailyTrend();
       res.json({ success: true, data });
     } catch (error: any) {
-      console.error("getCategoryTreemap error:", error);
+      console.error("getDailyTrend error:", error);
       res.status(500).json({ success: false, message: error.message });
     }
   }
 
-  async getBudgetProgress(req: Request, res: Response) {
+  async getPersonalUsage(req: Request, res: Response) {
     try {
-      const data = await service.getBudgetProgress();
+      const data = await service.getPersonalUsage();
       res.json({ success: true, data });
     } catch (error: any) {
-      console.error("getBudgetProgress error:", error);
+      console.error("getPersonalUsage error:", error);
       res.status(500).json({ success: false, message: error.message });
     }
   }
 
-  async getCashFlow(req: Request, res: Response) {
+  async getProfitMargin(req: Request, res: Response) {
     try {
-      const { startDate, endDate } = req.query;
-      const data = await service.getCashFlow(startDate as string, endDate as string);
+      const data = await service.getProfitMargin();
       res.json({ success: true, data });
     } catch (error: any) {
-      console.error("getCashFlow error:", error);
-      res.status(500).json({ success: false, message: error.message });
-    }
-  }
-
-  async getPaymentTypeDistribution(req: Request, res: Response) {
-    try {
-      const { startDate, endDate } = req.query;
-      const data = await service.getPaymentTypeDistribution(startDate as string, endDate as string);
-      res.json({ success: true, data });
-    } catch (error: any) {
-      console.error("getPaymentTypeDistribution error:", error);
-      res.status(500).json({ success: false, message: error.message });
-    }
-  }
-
-  async getPersonalVsBusiness(req: Request, res: Response) {
-    try {
-      const { startDate, endDate } = req.query;
-      const data = await service.getPersonalVsBusiness(startDate as string, endDate as string);
-      res.json({ success: true, data });
-    } catch (error: any) {
-      console.error("getPersonalVsBusiness error:", error);
-      res.status(500).json({ success: false, message: error.message });
-    }
-  }
-
-  async getBurnRate(req: Request, res: Response) {
-    try {
-      const { startDate, endDate } = req.query;
-      const data = await service.getBurnRate(startDate as string, endDate as string);
-      res.json({ success: true, data });
-    } catch (error: any) {
-      console.error("getBurnRate error:", error);
-      res.status(500).json({ success: false, message: error.message });
-    }
-  }
-
-  async getRunway(req: Request, res: Response) {
-    try {
-      const data = await service.getRunway();
-      res.json({ success: true, data });
-    } catch (error: any) {
-      console.error("getRunway error:", error);
-      res.status(500).json({ success: false, message: error.message });
-    }
-  }
-
-  async getHeatmap(req: Request, res: Response) {
-    try {
-      const { year, month } = req.query;
-      const data = await service.getHeatmap(
-        year ? parseInt(year as string) : undefined,
-        month ? parseInt(month as string) : undefined
-      );
-      res.json({ success: true, data });
-    } catch (error: any) {
-      console.error("getHeatmap error:", error);
-      res.status(500).json({ success: false, message: error.message });
-    }
-  }
-
-  async getDailyNetProfit(req: Request, res: Response) {
-    try {
-      const { startDate, endDate } = req.query;
-      const data = await service.getDailyNetProfit(startDate as string, endDate as string);
-      res.json({ success: true, data });
-    } catch (error: any) {
-      console.error("getDailyNetProfit error:", error);
-      res.status(500).json({ success: false, message: error.message });
-    }
-  }
-
-  async getCumulativeProfit(req: Request, res: Response) {
-    try {
-      const { startDate, endDate } = req.query;
-      const data = await service.getCumulativeProfit(startDate as string, endDate as string);
-      res.json({ success: true, data });
-    } catch (error: any) {
-      console.error("getCumulativeProfit error:", error);
-      res.status(500).json({ success: false, message: error.message });
-    }
-  }
-
-  async getWeeklyAggregates(req: Request, res: Response) {
-    try {
-      const { startDate, endDate } = req.query;
-      const data = await service.getWeeklyAggregates(startDate as string, endDate as string);
-      res.json({ success: true, data });
-    } catch (error: any) {
-      console.error("getWeeklyAggregates error:", error);
+      console.error("getProfitMargin error:", error);
       res.status(500).json({ success: false, message: error.message });
     }
   }
 
   async getCategorySpending(req: Request, res: Response) {
     try {
-      const { startDate, endDate } = req.query;
-      const data = await service.getCategorySpending(startDate as string, endDate as string);
+      const data = await service.getCategorySpending();
       res.json({ success: true, data });
     } catch (error: any) {
       console.error("getCategorySpending error:", error);
@@ -169,13 +75,22 @@ export class ExpenseAnalyticsController {
     }
   }
 
-  async getReferenceTypeSummary(req: Request, res: Response) {
+  async getCategoryTreemap(req: Request, res: Response) {
     try {
-      const { startDate, endDate } = req.query;
-      const data = await service.getReferenceTypeSummary(startDate as string, endDate as string);
+      const data = await service.getCategoryTreemap();
       res.json({ success: true, data });
     } catch (error: any) {
-      console.error("getReferenceTypeSummary error:", error);
+      console.error("getCategoryTreemap error:", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  async getPlanExpenses(req: Request, res: Response) {
+    try {
+      const data = await service.getPlanExpenses();
+      res.json({ success: true, data });
+    } catch (error: any) {
+      console.error("getPlanExpenses error:", error);
       res.status(500).json({ success: false, message: error.message });
     }
   }
@@ -193,42 +108,25 @@ export class ExpenseAnalyticsController {
     }
   }
 
-  async getProfitMargin(req: Request, res: Response) {
+  // ── New: Daily Profit Margin ──
+  async getDailyProfitMargin(req: Request, res: Response) {
     try {
-      const data = await service.getProfitMargin();
+      const data = await service.getDailyProfitMargin();
       res.json({ success: true, data });
     } catch (error: any) {
-      console.error("getProfitMargin error:", error);
-      res.status(500).json({ success: false, message: error.message });
-    }
-  }
-    async getPersonalUsageSummary(req: Request, res: Response) {
-    try {
-      const { startDate, endDate } = req.query;
-      const data = await service.getPersonalUsageSummary(
-        startDate as string,
-        endDate as string
-      );
-      res.json({ success: true, data });
-    } catch (error: any) {
-      console.error("getPersonalUsageSummary error:", error);
+      console.error("getDailyProfitMargin error:", error);
       res.status(500).json({ success: false, message: error.message });
     }
   }
 
-  // ── Personal Usage Total (all-time) ──
-  async getPersonalUsageTotal(req: Request, res: Response) {
+  // ── New: Available Years ──
+  async getAvailableYears(req: Request, res: Response) {
     try {
-      const { startDate, endDate } = req.query;
-      const data = await service.getPersonalUsageTotal(
-        startDate as string,
-        endDate as string
-      );
+      const data = await service.getAvailableYears();
       res.json({ success: true, data });
     } catch (error: any) {
-      console.error("getPersonalUsageTotal error:", error);
+      console.error("getAvailableYears error:", error);
       res.status(500).json({ success: false, message: error.message });
     }
   }
 }
-
