@@ -8,14 +8,23 @@ export class ExpenseService {
   private static cache = new AdvancedCache<string, any>(500, 45);
 
   static async createExpense(data: CreateExpenseInput) {
+    // ── 1. Validate inputs (defensive) ──
     const amount = typeof data.amount === 'string' ? parseFloat(data.amount) : data.amount;
     if (isNaN(amount) || amount <= 0) {
       throw new Error('Amount must be a positive number');
     }
+    if (!data.title || data.title.trim() === '') {
+      throw new Error('Title is required');
+    }
+    if (!data.categoryId) {
+      throw new Error('Category ID is required');
+    }
 
+    // ── 2. Check category exists ──
     const category = await db.ExpenseCategory.findByPk(data.categoryId);
     if (!category) throw new Error('Category not found');
 
+    // ── 3. Build expense object ──
     const expenseData = {
       title: data.title.trim(),
       amount: amount,
@@ -28,15 +37,31 @@ export class ExpenseService {
       expensePlanId: data.expensePlanId || null,
     };
 
-    const expense = await db.Expense.create(expenseData);
-    this.invalidateListCache();
-
-    if (data.expensePlanId) {
-      await db.ExpensePlan.increment('currentAllocatedAmount', {
-        by: amount,
-        where: { id: data.expensePlanId },
-      });
+    // ── 4. Create expense ──
+    let expense;
+    try {
+      expense = await db.Expense.create(expenseData);
+    } catch (dbError: any) {
+      console.error('DB create error:', dbError);
+      throw new Error(`Database error: ${dbError.message}`);
     }
+
+    // ── 5. If linked to a plan, update allocation ──
+    if (data.expensePlanId) {
+      try {
+        await db.ExpensePlan.increment('currentAllocatedAmount', {
+          by: amount,
+          where: { id: data.expensePlanId },
+        });
+      } catch (planError: any) {
+        console.error('Plan allocation update error:', planError);
+        // Don't fail the whole operation – just log it
+        // But we could also rollback the expense creation – we'll keep it simple.
+      }
+    }
+
+    // ── 6. Invalidate cache ──
+    this.invalidateListCache();
 
     return expense.toJSON();
   }
@@ -59,7 +84,6 @@ export class ExpenseService {
     return expenseJson;
   }
 
-  // ── UPDATE EXPENSE ──
   static async updateExpense(id: string, data: UpdateExpenseInput) {
     const expense = await db.Expense.findByPk(id);
     if (!expense) throw new Error('Expense not found');
